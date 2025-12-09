@@ -1,0 +1,22 @@
+
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# On branch main
+# Your branch is up to date with 'origin/main'.
+#
+Changes to be committed:
+	deleted:    prisma/migrations/20250912130900_add_game_stats/migration.sql
+	new file:   prisma/migrations/20250927115415_initial_migration_with_profile_fields/migration.sql
+	new file:   prisma/migrations/migration_lock.toml
+	modified:   prisma/schema.prisma
+	modified:   src/controllers/user.controller.js
+	modified:   src/generated/prisma/edge.js
+	modified:   src/generated/prisma/index-browser.js
+	modified:   src/generated/prisma/index.d.ts
+	modified:   src/generated/prisma/index.js
+	modified:   src/generated/prisma/package.json
+	modified:   src/generated/prisma/schema.prisma
+	modified:   src/generated/prisma/wasm.js
+	modified:   src/routes/user.route.js
+
