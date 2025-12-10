@@ -188,7 +188,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "D:\\Document\\react native work\\backend\\src\\generated\\prisma",
+      "value": "D:\\Document\\react native work\\alphaGameTolo\\backend\\src\\generated\\prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -202,7 +202,7 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "D:\\Document\\react native work\\backend\\prisma\\schema.prisma",
+    "sourceFilePath": "D:\\Document\\react native work\\alphaGameTolo\\backend\\prisma\\schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
