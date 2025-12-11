@@ -5,6 +5,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import userRoutes from './routes/user.route.js';
 import gameRoutes from './routes/game.route.js';
+import matchmakingRoutes from './routes/matchmaking.route.js';
 import { swaggerUi, specs } from './utils/swagger.js';
 
 // Load environment variables
@@ -28,6 +29,7 @@ app.use(express.json());
 // Routes
 app.use('/api/auth', userRoutes);
 app.use('/api/games', gameRoutes);
+app.use('/api/matchmaking', matchmakingRoutes);
 
 // Swagger API documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
