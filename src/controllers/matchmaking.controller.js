@@ -56,13 +56,14 @@ export const startMatchmaking = async (req, res) => {
             });
         }
 
+
         // Check if user is already in queue
         if (matchmakingQueue.has(userId)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Already in matchmaking queue'
-            });
+            // Remove old entry and continue (handles component remounts)
+            console.log(`User ${userId} already in queue, removing old entry`);
+            matchmakingQueue.delete(userId);
         }
+
 
         // Try to find an existing match
         const bestMatch = findBestMatch(user.rating, gameType, userId);
