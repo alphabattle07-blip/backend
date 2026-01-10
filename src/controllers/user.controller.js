@@ -94,7 +94,8 @@ export const register = async (req, res) => {
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Internal server error' });
-  }};
+  }
+};
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -139,7 +140,8 @@ export const login = async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Internal server error' });
-  }};
+  }
+};
 export const getProfile = async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -148,6 +150,7 @@ export const getProfile = async (req, res) => {
         id: true,
         email: true,
         name: true,
+        avatar: true,
         battleBonus: true,
         levelReward: true,
         rating: true,
@@ -173,15 +176,17 @@ export const getProfile = async (req, res) => {
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ error: 'Internal server error' });
-  }};
+  }
+};
 export const updateProfile = async (req, res) => {
   try {
-    const { name, battleBonus, levelReward, rating } = req.body;
+    const { name, avatar, battleBonus, levelReward, rating } = req.body;
     const userId = req.user.id;
 
     // Prepare data for update, only include fields if they are provided
     const updateData = {};
     if (name !== undefined) updateData.name = name.trim();
+    if (avatar !== undefined) updateData.avatar = avatar;
     if (battleBonus !== undefined) updateData.battleBonus = battleBonus;
     if (levelReward !== undefined) updateData.levelReward = levelReward;
     if (rating !== undefined) updateData.rating = rating;
@@ -199,6 +204,7 @@ export const updateProfile = async (req, res) => {
         id: true,
         email: true,
         name: true,
+        avatar: true,
         battleBonus: true,
         levelReward: true,
         rating: true,

@@ -1265,6 +1265,7 @@ export namespace Prisma {
     email: string | null
     password: string | null
     name: string | null
+    avatar: string | null
     battleBonus: number | null
     levelReward: number | null
     rating: number | null
@@ -1277,6 +1278,7 @@ export namespace Prisma {
     email: string | null
     password: string | null
     name: string | null
+    avatar: string | null
     battleBonus: number | null
     levelReward: number | null
     rating: number | null
@@ -1289,6 +1291,7 @@ export namespace Prisma {
     email: number
     password: number
     name: number
+    avatar: number
     battleBonus: number
     levelReward: number
     rating: number
@@ -1315,6 +1318,7 @@ export namespace Prisma {
     email?: true
     password?: true
     name?: true
+    avatar?: true
     battleBonus?: true
     levelReward?: true
     rating?: true
@@ -1327,6 +1331,7 @@ export namespace Prisma {
     email?: true
     password?: true
     name?: true
+    avatar?: true
     battleBonus?: true
     levelReward?: true
     rating?: true
@@ -1339,6 +1344,7 @@ export namespace Prisma {
     email?: true
     password?: true
     name?: true
+    avatar?: true
     battleBonus?: true
     levelReward?: true
     rating?: true
@@ -1438,6 +1444,7 @@ export namespace Prisma {
     email: string
     password: string
     name: string | null
+    avatar: string | null
     battleBonus: number
     levelReward: number
     rating: number
@@ -1469,6 +1476,7 @@ export namespace Prisma {
     email?: boolean
     password?: boolean
     name?: boolean
+    avatar?: boolean
     battleBonus?: boolean
     levelReward?: boolean
     rating?: boolean
@@ -1486,6 +1494,7 @@ export namespace Prisma {
     email?: boolean
     password?: boolean
     name?: boolean
+    avatar?: boolean
     battleBonus?: boolean
     levelReward?: boolean
     rating?: boolean
@@ -1498,6 +1507,7 @@ export namespace Prisma {
     email?: boolean
     password?: boolean
     name?: boolean
+    avatar?: boolean
     battleBonus?: boolean
     levelReward?: boolean
     rating?: boolean
@@ -1510,6 +1520,7 @@ export namespace Prisma {
     email?: boolean
     password?: boolean
     name?: boolean
+    avatar?: boolean
     battleBonus?: boolean
     levelReward?: boolean
     rating?: boolean
@@ -1517,7 +1528,7 @@ export namespace Prisma {
     updatedAt?: boolean
   }
 
-  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "email" | "password" | "name" | "battleBonus" | "levelReward" | "rating" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
+  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "email" | "password" | "name" | "avatar" | "battleBonus" | "levelReward" | "rating" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
   export type UserInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     gameStats?: boolean | User$gameStatsArgs<ExtArgs>
     gamesAsPlayer1?: boolean | User$gamesAsPlayer1Args<ExtArgs>
@@ -1541,6 +1552,7 @@ export namespace Prisma {
       email: string
       password: string
       name: string | null
+      avatar: string | null
       battleBonus: number
       levelReward: number
       rating: number
@@ -1977,6 +1989,7 @@ export namespace Prisma {
     readonly email: FieldRef<"User", 'String'>
     readonly password: FieldRef<"User", 'String'>
     readonly name: FieldRef<"User", 'String'>
+    readonly avatar: FieldRef<"User", 'String'>
     readonly battleBonus: FieldRef<"User", 'Int'>
     readonly levelReward: FieldRef<"User", 'Int'>
     readonly rating: FieldRef<"User", 'Int'>
@@ -5927,6 +5940,7 @@ export namespace Prisma {
     email: 'email',
     password: 'password',
     name: 'name',
+    avatar: 'avatar',
     battleBonus: 'battleBonus',
     levelReward: 'levelReward',
     rating: 'rating',
@@ -6129,6 +6143,7 @@ export namespace Prisma {
     email?: StringFilter<"User"> | string
     password?: StringFilter<"User"> | string
     name?: StringNullableFilter<"User"> | string | null
+    avatar?: StringNullableFilter<"User"> | string | null
     battleBonus?: IntFilter<"User"> | number
     levelReward?: IntFilter<"User"> | number
     rating?: IntFilter<"User"> | number
@@ -6145,6 +6160,7 @@ export namespace Prisma {
     email?: SortOrder
     password?: SortOrder
     name?: SortOrderInput | SortOrder
+    avatar?: SortOrderInput | SortOrder
     battleBonus?: SortOrder
     levelReward?: SortOrder
     rating?: SortOrder
@@ -6164,6 +6180,7 @@ export namespace Prisma {
     NOT?: UserWhereInput | UserWhereInput[]
     password?: StringFilter<"User"> | string
     name?: StringNullableFilter<"User"> | string | null
+    avatar?: StringNullableFilter<"User"> | string | null
     battleBonus?: IntFilter<"User"> | number
     levelReward?: IntFilter<"User"> | number
     rating?: IntFilter<"User"> | number
@@ -6180,6 +6197,7 @@ export namespace Prisma {
     email?: SortOrder
     password?: SortOrder
     name?: SortOrderInput | SortOrder
+    avatar?: SortOrderInput | SortOrder
     battleBonus?: SortOrder
     levelReward?: SortOrder
     rating?: SortOrder
@@ -6200,6 +6218,7 @@ export namespace Prisma {
     email?: StringWithAggregatesFilter<"User"> | string
     password?: StringWithAggregatesFilter<"User"> | string
     name?: StringNullableWithAggregatesFilter<"User"> | string | null
+    avatar?: StringNullableWithAggregatesFilter<"User"> | string | null
     battleBonus?: IntWithAggregatesFilter<"User"> | number
     levelReward?: IntWithAggregatesFilter<"User"> | number
     rating?: IntWithAggregatesFilter<"User"> | number
@@ -6445,6 +6464,7 @@ export namespace Prisma {
     email: string
     password: string
     name?: string | null
+    avatar?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -6461,6 +6481,7 @@ export namespace Prisma {
     email: string
     password: string
     name?: string | null
+    avatar?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -6477,6 +6498,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     password?: StringFieldUpdateOperationsInput | string
     name?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -6493,6 +6515,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     password?: StringFieldUpdateOperationsInput | string
     name?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -6509,6 +6532,7 @@ export namespace Prisma {
     email: string
     password: string
     name?: string | null
+    avatar?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -6521,6 +6545,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     password?: StringFieldUpdateOperationsInput | string
     name?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -6533,6 +6558,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     password?: StringFieldUpdateOperationsInput | string
     name?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -6876,6 +6902,7 @@ export namespace Prisma {
     email?: SortOrder
     password?: SortOrder
     name?: SortOrder
+    avatar?: SortOrder
     battleBonus?: SortOrder
     levelReward?: SortOrder
     rating?: SortOrder
@@ -6894,6 +6921,7 @@ export namespace Prisma {
     email?: SortOrder
     password?: SortOrder
     name?: SortOrder
+    avatar?: SortOrder
     battleBonus?: SortOrder
     levelReward?: SortOrder
     rating?: SortOrder
@@ -6906,6 +6934,7 @@ export namespace Prisma {
     email?: SortOrder
     password?: SortOrder
     name?: SortOrder
+    avatar?: SortOrder
     battleBonus?: SortOrder
     levelReward?: SortOrder
     rating?: SortOrder
@@ -8008,6 +8037,7 @@ export namespace Prisma {
     email: string
     password: string
     name?: string | null
+    avatar?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8023,6 +8053,7 @@ export namespace Prisma {
     email: string
     password: string
     name?: string | null
+    avatar?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8054,6 +8085,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     password?: StringFieldUpdateOperationsInput | string
     name?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8069,6 +8101,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     password?: StringFieldUpdateOperationsInput | string
     name?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8084,6 +8117,7 @@ export namespace Prisma {
     email: string
     password: string
     name?: string | null
+    avatar?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8099,6 +8133,7 @@ export namespace Prisma {
     email: string
     password: string
     name?: string | null
+    avatar?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8119,6 +8154,7 @@ export namespace Prisma {
     email: string
     password: string
     name?: string | null
+    avatar?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8134,6 +8170,7 @@ export namespace Prisma {
     email: string
     password: string
     name?: string | null
+    avatar?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8189,6 +8226,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     password?: StringFieldUpdateOperationsInput | string
     name?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8204,6 +8242,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     password?: StringFieldUpdateOperationsInput | string
     name?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8230,6 +8269,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     password?: StringFieldUpdateOperationsInput | string
     name?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8245,6 +8285,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     password?: StringFieldUpdateOperationsInput | string
     name?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8311,6 +8352,7 @@ export namespace Prisma {
     email: string
     password: string
     name?: string | null
+    avatar?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8326,6 +8368,7 @@ export namespace Prisma {
     email: string
     password: string
     name?: string | null
+    avatar?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8398,6 +8441,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     password?: StringFieldUpdateOperationsInput | string
     name?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8413,6 +8457,7 @@ export namespace Prisma {
     email?: StringFieldUpdateOperationsInput | string
     password?: StringFieldUpdateOperationsInput | string
     name?: NullableStringFieldUpdateOperationsInput | string | null
+    avatar?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number

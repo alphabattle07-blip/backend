@@ -19,6 +19,7 @@ model User {
   email       String   @unique
   password    String
   name        String?
+  avatar      String?
   battleBonus Int      @default(0)
   levelReward Int      @default(0)
   rating      Int      @default(1000)
