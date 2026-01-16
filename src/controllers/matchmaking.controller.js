@@ -1,4 +1,5 @@
 import { PrismaClient } from '../generated/prisma/index.js';
+import { initializeGameData } from '../utils/gameUtils.js';
 
 const prisma = new PrismaClient();
 
@@ -79,13 +80,14 @@ export const startMatchmaking = async (req, res) => {
             });
 
             // Create game with both players
+            const gameData = initializeGameData(gameType, opponent, user);
             const game = await prisma.game.create({
                 data: {
                     gameType,
                     player1Id: bestMatch.userId, // The player who was waiting
                     player2Id: userId, // The player who just joined
                     status: 'IN_PROGRESS',
-                    currentTurn: bestMatch.userId, // Player 1 starts
+                    ...gameData,
                     startedAt: new Date()
                 },
                 include: {
@@ -212,13 +214,20 @@ export const checkMatchmakingStatus = async (req, res) => {
             matchmakingQueue.delete(userId);
             matchmakingQueue.delete(bestMatch.userId);
 
+            // Get opponent details
+            const opponent = await prisma.user.findUnique({
+                where: { id: bestMatch.userId },
+                select: { id: true, name: true, rating: true }
+            });
+
+            const gameData = initializeGameData(gameType, user, opponent);
             const game = await prisma.game.create({
                 data: {
                     gameType,
                     player1Id: userId,
                     player2Id: bestMatch.userId,
                     status: 'IN_PROGRESS',
-                    currentTurn: userId, // Player 1 starts
+                    ...gameData,
                     startedAt: new Date()
                 },
                 include: {

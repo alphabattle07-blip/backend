@@ -1,4 +1,47 @@
 import { PrismaClient } from '../generated/prisma/index.js';
+import { initializeGameData } from '../utils/gameUtils.js';
+
+// Helper for Whot deck generation
+const SUIT_CARDS = {
+  circle: [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14],
+  triangle: [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14],
+  cross: [1, 2, 3, 5, 7, 10, 11, 13, 14],
+  square: [1, 2, 3, 5, 7, 10, 11, 13, 14],
+  star: [1, 2, 3, 4, 5, 7, 8],
+};
+
+const generateWhotDeck = (ruleVersion = "rule1") => {
+  const deck = [];
+  for (const suit in SUIT_CARDS) {
+    SUIT_CARDS[suit].forEach((num) => {
+      deck.push({
+        id: `${suit}-${num}`,
+        suit: suit,
+        number: num,
+        rank: `${suit}-${num}`,
+      });
+    });
+  }
+  const whotCount = ruleVersion === "rule1" ? 5 : 0;
+  for (let i = 1; i <= whotCount; i++) {
+    deck.push({
+      id: `whot-${i}`,
+      suit: "whot",
+      number: 20,
+      rank: `whot-${i}`,
+    });
+  }
+  return deck;
+};
+
+const shuffleArray = (array) => {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
 
 const prisma = new PrismaClient();
 
@@ -70,13 +113,19 @@ export const joinGame = async (req, res) => {
     }
 
     // Update game with player 2
+    const updateData = {
+      player2Id: userId,
+      status: 'IN_PROGRESS',
+      startedAt: new Date(),
+    };
+
+    // Initialize state
+    const gameData = initializeGameData(game.gameType, game.player1, { id: userId, name: req.user.name || 'Opponent' });
+    Object.assign(updateData, gameData);
+
     const updatedGame = await prisma.game.update({
       where: { id: gameId },
-      data: {
-        player2Id: userId,
-        status: 'IN_PROGRESS',
-        startedAt: new Date()
-      },
+      data: updateData,
       include: {
         player1: { select: { id: true, name: true, rating: true } },
         player2: { select: { id: true, name: true, rating: true } }
