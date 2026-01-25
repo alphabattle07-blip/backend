@@ -58,6 +58,7 @@ io.on('connection', (socket) => {
   // Handle game moves
   socket.on('game-move', (data) => {
     const { gameId, move } = data;
+    console.log(`📤 [Socket] Broadcasting move: ${move?.type || 'UNKNOWN'} to game ${gameId}`);
     // Broadcast move to other players in the room
     socket.to(gameId).emit('opponent-move', move);
   });
