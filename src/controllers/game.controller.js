@@ -236,10 +236,11 @@ export const updateGameState = async (req, res) => {
     const updateData = {};
     if (board !== undefined) updateData.board = board;
     if (currentTurn !== undefined) updateData.currentTurn = currentTurn;
-    if (winnerId !== undefined) updateData.winnerId = winnerId;
-    if (status !== undefined) updateData.status = status;
+    // winnerId and COMPLETED status are controlled server-side only (socket handler)
+    // Clients can only set ABANDONED status (e.g., forfeit)
+    if (status !== undefined && status !== 'COMPLETED') updateData.status = status;
 
-    if (status === 'COMPLETED') {
+    if (status === 'ABANDONED') {
       updateData.endedAt = new Date();
     }
 
