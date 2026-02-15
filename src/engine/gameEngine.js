@@ -3,8 +3,19 @@
  * 
  * Pure functions ported from client game.ts + rules.ts + rules2.ts.
  * Used by the socket handler to validate and apply moves authoritatively.
- * Zero external dependencies. Each function runs in <1ms.
+ * Zero external dependencies (except crypto). Each function runs in <1ms.
  */
+
+import crypto from 'crypto';
+
+/**
+ * O2: Crypto-secure random integer in range [0, max).
+ * Replaces Math.random() for all game-critical randomness.
+ */
+const cryptoRandomInt = (max) => {
+    if (max <= 1) return 0;
+    return crypto.randomInt(max);
+};
 
 // =========================================================
 // RULE 1 — Validation
@@ -367,6 +378,7 @@ export const executeForcedDraw = (state) => {
 
 /**
  * Reshuffle pile into market (keeping top card).
+ * O2: Uses crypto.randomInt() for cryptographically secure shuffling.
  */
 export const getReshuffledState = (state) => {
     if (state.pile.length <= 1) return state;
@@ -374,10 +386,10 @@ export const getReshuffledState = (state) => {
     const topCard = state.pile[state.pile.length - 1];
     const cardsToShuffle = state.pile.slice(0, state.pile.length - 1);
 
-    // Fisher-Yates shuffle
+    // Fisher-Yates shuffle with crypto-secure randomness
     const shuffled = [...cardsToShuffle];
     for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
+        const j = cryptoRandomInt(i + 1);
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 
