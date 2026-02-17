@@ -1,5 +1,7 @@
 import { PrismaClient } from '../generated/prisma/index.js';
 import { initializeGameData } from '../utils/gameUtils.js';
+import { ludoGameLoop } from '../engine/ludoGameLoop.js';
+import { broadcastGameState } from '../socket/socketManager.js';
 
 // Helper for Whot deck generation
 const SUIT_CARDS = {
@@ -132,6 +134,17 @@ export const joinGame = async (req, res) => {
       }
     });
 
+    // START GAME TIMER IF LUDO
+    if (game.gameType === 'ludo') {
+      const firstPlayerId = updatedGame.player1Id; // Usually p1 starts
+      ludoGameLoop.startTurnTimer(gameId, firstPlayerId);
+    }
+
+    // Broadcast Join Event
+    broadcastGameState(gameId, 'playerJoined', {
+      game: updatedGame
+    });
+
     res.json({
       success: true,
       game: updatedGame
@@ -214,6 +227,8 @@ export const updateGameState = async (req, res) => {
     const { board, currentTurn, winnerId, status } = req.body;
     const userId = req.user.id;
 
+    // Note: Assuming auth middleware populates req.user
+
     const game = await prisma.game.findUnique({
       where: { id: gameId }
     });
@@ -241,6 +256,10 @@ export const updateGameState = async (req, res) => {
 
     if (status === 'COMPLETED') {
       updateData.endedAt = new Date();
+      // Clear Timer
+      if (game.gameType === 'ludo') {
+        ludoGameLoop.clearTurnTimer(gameId);
+      }
     }
 
     const updatedGame = await prisma.game.update({
@@ -251,6 +270,18 @@ export const updateGameState = async (req, res) => {
         player2: { select: { id: true, name: true, rating: true } }
       }
     });
+
+    // RESTART TIMER ON TURN CHANGE
+    // Only if the game is still in progress and it's a ludo game
+    if (game.gameType === 'ludo' && status !== 'COMPLETED') {
+      // If currentTurn changed (it might be passed in body, or we check updatedGame)
+      const nextTurn = updateData.currentTurn || game.currentTurn;
+
+      // We should always restart timing on any valid action that updates board/turn
+      if (nextTurn) {
+        ludoGameLoop.startTurnTimer(gameId, nextTurn);
+      }
+    }
 
     res.json({
       success: true,
