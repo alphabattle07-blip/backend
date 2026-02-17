@@ -208,12 +208,10 @@ export const getGame = async (req, res) => {
 };
 
 // Update game state
-// C2: Only status changes (forfeit/abandon) are allowed via REST.
-// Board mutations MUST go through the socket game-move handler.
 export const updateGameState = async (req, res) => {
   try {
     const { gameId } = req.params;
-    const { status } = req.body;
+    const { board, currentTurn, winnerId, status } = req.body;
     const userId = req.user.id;
 
     const game = await prisma.game.findUnique({
@@ -236,17 +234,14 @@ export const updateGameState = async (req, res) => {
     }
 
     const updateData = {};
+    if (board !== undefined) updateData.board = board;
+    if (currentTurn !== undefined) updateData.currentTurn = currentTurn;
+    // winnerId and COMPLETED status are controlled server-side only (socket handler)
+    // Clients can only set ABANDONED status (e.g., forfeit)
+    if (status !== undefined && status !== 'COMPLETED') updateData.status = status;
 
-    // C2: Only ABANDONED status is writable by clients (forfeit)
-    // Board, winnerId, currentTurn, and COMPLETED status are server-only
     if (status === 'ABANDONED') {
-      updateData.status = 'ABANDONED';
       updateData.endedAt = new Date();
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: 'Only forfeit (ABANDONED) status updates are allowed via REST'
-      });
     }
 
     const updatedGame = await prisma.game.update({

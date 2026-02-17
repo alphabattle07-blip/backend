@@ -6,15 +6,6 @@ const prisma = new PrismaClient();
 // Store for matchmaking queue
 const matchmakingQueue = new Map(); // userId -> { rating, timestamp, gameType }
 
-// C3: Simple mutex lock to prevent duplicate game creation
-// Serializes match-and-create operations
-let matchLock = Promise.resolve();
-
-const withMatchLock = (fn) => {
-    matchLock = matchLock.then(fn).catch(fn);
-    return matchLock;
-};
-
 /**
  * Calculate rating difference between two players
  */
@@ -69,53 +60,62 @@ export const startMatchmaking = async (req, res) => {
 
         // Check if user is already in queue
         if (matchmakingQueue.has(userId)) {
+            // Remove old entry and continue (handles component remounts)
             console.log(`User ${userId} already in queue, removing old entry`);
             matchmakingQueue.delete(userId);
         }
 
-        // C3: Lock to prevent two concurrent requests from matching the same player
-        const result = await withMatchLock(async () => {
-            const bestMatch = findBestMatch(user.rating, gameType, userId);
 
-            if (bestMatch) {
-                matchmakingQueue.delete(bestMatch.userId);
+        // Try to find an existing match
+        const bestMatch = findBestMatch(user.rating, gameType, userId);
 
-                const opponent = await prisma.user.findUnique({
-                    where: { id: bestMatch.userId },
-                    select: { id: true, name: true, rating: true }
-                });
+        if (bestMatch) {
+            // Found a match! Remove from queue and create game
+            matchmakingQueue.delete(bestMatch.userId);
 
-                const gameData = initializeGameData(gameType, opponent, user);
-                const game = await prisma.game.create({
-                    data: {
-                        gameType,
-                        player1Id: bestMatch.userId,
-                        player2Id: userId,
-                        status: 'IN_PROGRESS',
-                        ...gameData,
-                        startedAt: new Date()
-                    },
-                    include: {
-                        player1: { select: { id: true, name: true, rating: true } },
-                        player2: { select: { id: true, name: true, rating: true } }
-                    }
-                });
+            // Get opponent details
+            const opponent = await prisma.user.findUnique({
+                where: { id: bestMatch.userId },
+                select: { id: true, name: true, rating: true }
+            });
 
-                return { matched: true, game };
-            } else {
-                matchmakingQueue.set(userId, {
-                    rating: user.rating,
-                    timestamp: Date.now(),
-                    gameType
-                });
-                return { matched: false };
-            }
-        });
+            // Create game with both players
+            const gameData = initializeGameData(gameType, opponent, user);
+            const game = await prisma.game.create({
+                data: {
+                    gameType,
+                    player1Id: bestMatch.userId, // The player who was waiting
+                    player2Id: userId, // The player who just joined
+                    status: 'IN_PROGRESS',
+                    ...gameData,
+                    startedAt: new Date()
+                },
+                include: {
+                    player1: { select: { id: true, name: true, rating: true } },
+                    player2: { select: { id: true, name: true, rating: true } }
+                }
+            });
 
-        if (result.matched) {
-            return res.json({ success: true, matched: true, game: result.game, message: 'Match found!' });
+            return res.json({
+                success: true,
+                matched: true,
+                game,
+                message: 'Match found!'
+            });
         } else {
-            return res.json({ success: true, matched: false, message: 'Searching for opponent...', queuePosition: matchmakingQueue.size });
+            // No match found, add to queue
+            matchmakingQueue.set(userId, {
+                rating: user.rating,
+                timestamp: Date.now(),
+                gameType
+            });
+
+            return res.json({
+                success: true,
+                matched: false,
+                message: 'Searching for opponent...',
+                queuePosition: matchmakingQueue.size
+            });
         }
     } catch (error) {
         console.error('Matchmaking error:', error);
@@ -201,47 +201,47 @@ export const checkMatchmakingStatus = async (req, res) => {
             });
         }
 
-        // Still in queue, try to find match again (C3: with lock)
+        // Still in queue, try to find match again
         const user = await prisma.user.findUnique({
             where: { id: userId },
             select: { id: true, name: true, rating: true }
         });
 
-        const result = await withMatchLock(async () => {
-            const bestMatch = findBestMatch(user.rating, gameType, userId);
+        const bestMatch = findBestMatch(user.rating, gameType, userId);
 
-            if (bestMatch) {
-                matchmakingQueue.delete(userId);
-                matchmakingQueue.delete(bestMatch.userId);
+        if (bestMatch) {
+            // Found a match! Remove both from queue and create game
+            matchmakingQueue.delete(userId);
+            matchmakingQueue.delete(bestMatch.userId);
 
-                const opponent = await prisma.user.findUnique({
-                    where: { id: bestMatch.userId },
-                    select: { id: true, name: true, rating: true }
-                });
+            // Get opponent details
+            const opponent = await prisma.user.findUnique({
+                where: { id: bestMatch.userId },
+                select: { id: true, name: true, rating: true }
+            });
 
-                const gameData = initializeGameData(gameType, user, opponent);
-                const game = await prisma.game.create({
-                    data: {
-                        gameType,
-                        player1Id: userId,
-                        player2Id: bestMatch.userId,
-                        status: 'IN_PROGRESS',
-                        ...gameData,
-                        startedAt: new Date()
-                    },
-                    include: {
-                        player1: { select: { id: true, name: true, rating: true } },
-                        player2: { select: { id: true, name: true, rating: true } }
-                    }
-                });
+            const gameData = initializeGameData(gameType, user, opponent);
+            const game = await prisma.game.create({
+                data: {
+                    gameType,
+                    player1Id: userId,
+                    player2Id: bestMatch.userId,
+                    status: 'IN_PROGRESS',
+                    ...gameData,
+                    startedAt: new Date()
+                },
+                include: {
+                    player1: { select: { id: true, name: true, rating: true } },
+                    player2: { select: { id: true, name: true, rating: true } }
+                }
+            });
 
-                return { matched: true, game };
-            }
-            return { matched: false };
-        });
-
-        if (result.matched) {
-            return res.json({ success: true, matched: true, game: result.game, message: 'Match found!' });
+            return res.json({
+                success: true,
+                matched: true,
+                game,
+                message: 'Match found!'
+            });
         }
 
         // Still searching
