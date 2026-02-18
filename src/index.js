@@ -5,6 +5,8 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import gameRoutes from './routes/game.route.js';
+import userRoutes from './routes/user.route.js';
+import matchmakingRoutes from './routes/matchmaking.route.js';
 import { initializeSocket } from './socket/socketManager.js';
 import { swaggerUi, specs } from './utils/swagger.js';
 
@@ -33,6 +35,8 @@ initializeSocket(io);
 
 // Routes
 app.use('/api/games', gameRoutes);
+app.use('/api/auth', userRoutes);
+app.use('/api/matchmaking', matchmakingRoutes);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 
 // Basic health check
