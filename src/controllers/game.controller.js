@@ -2,6 +2,7 @@ import { PrismaClient } from '../generated/prisma/index.js';
 import { initializeGameData } from '../utils/gameUtils.js';
 import { ludoGameLoop } from '../engine/ludoGameLoop.js';
 import { broadcastGameState } from '../socket/socketManager.js';
+import { whotGameLoop } from '../engine/whotGameLoop.js';
 
 // Helper for Whot deck generation
 const SUIT_CARDS = {
@@ -138,6 +139,9 @@ export const joinGame = async (req, res) => {
     if (game.gameType === 'ludo') {
       const firstPlayerId = updatedGame.player1Id; // Usually p1 starts
       ludoGameLoop.startTurnTimer(gameId, firstPlayerId);
+    } else if (game.gameType === 'whot') {
+      const firstPlayerId = updatedGame.player1Id;
+      whotGameLoop.startTurnTimer(gameId, firstPlayerId);
     }
 
     // Broadcast Join Event
@@ -259,6 +263,8 @@ export const updateGameState = async (req, res) => {
       // Clear Timer
       if (game.gameType === 'ludo') {
         ludoGameLoop.clearTurnTimer(gameId);
+      } else if (game.gameType === 'whot') {
+        whotGameLoop.clearTurnTimer(gameId);
       }
     }
 
@@ -280,6 +286,11 @@ export const updateGameState = async (req, res) => {
       // We should always restart timing on any valid action that updates board/turn
       if (nextTurn) {
         ludoGameLoop.startTurnTimer(gameId, nextTurn);
+      }
+    } else if (game.gameType === 'whot' && status !== 'COMPLETED') {
+      const nextTurn = updateData.currentTurn || game.currentTurn;
+      if (nextTurn) {
+        whotGameLoop.startTurnTimer(gameId, nextTurn);
       }
     }
 
