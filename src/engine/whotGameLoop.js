@@ -20,9 +20,9 @@ const TIME_LIMITS = {
         DANGER: 40000,  // At 40s elapsed (10s left) - Red
     },
     COMPETITIVE: { // Warrior+ (1750+)
-        TOTAL: 25000, // 25s
-        WARNING: 15000, // At 15s elapsed (10s left) - Red Warning starts
-        DANGER: 20000,  // At 20s elapsed (5s left) - Final Danger
+        TOTAL: 30000, // 30s
+        WARNING: 15000, // At 15s elapsed (15s left) - Red Warning starts
+        DANGER: 25000,  // At 25s elapsed (5s left) - Final Danger
     }
 };
 
@@ -182,6 +182,15 @@ export const whotGameLoop = {
         if (currentTimeouts >= maxTimeouts) {
             await whotGameLoop.handleForfeit(gameId, playerId);
             return;
+        }
+
+        // 2b. Warning on 4th timeout (for Casual)
+        if (maxTimeouts === 5 && currentTimeouts === 4) {
+            broadcastGameState(gameId, 'gameTimeoutWarning', {
+                playerId,
+                timeouts: currentTimeouts,
+                message: "WARNING: One more timeout and you will forfeit the match!"
+            });
         }
 
         // 3. Auto-Play Logic

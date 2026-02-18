@@ -14,18 +14,16 @@ const RANK_THRESHOLDS = {
 
 const TIME_LIMITS = {
     CASUAL: {
-        TOTAL: 45000,
-        ROLL: 15000, // 0-15s
-        MOVE: 20000, // 15-35s
-        WARNING: 15000, // Warning at 30s (15s left)
-        DANGER: 5000,   // Danger at 40s (5s left)
+        TOTAL: 50000,
+        ROLL: 20000, // 0-20s Auto-roll
+        WARNING: 20000, // Yellow at 20s elapsed
+        DANGER: 40000,  // Red at 40s elapsed
     },
     COMPETITIVE: { // Warrior and above
         TOTAL: 30000,
-        ROLL: 8000, // 0-8s
-        MOVE: 15000, // 8-23s
-        WARNING: 10000, // Warning at 20s (10s left)
-        DANGER: 4000,  // Danger at 26s (4s left)
+        ROLL: 15000, // 0-15s Auto-roll
+        WARNING: 15000, // Yellow at 15s elapsed
+        DANGER: 25000,  // Red at 25s elapsed
     }
 };
 
@@ -221,6 +219,15 @@ export const ludoGameLoop = {
         if (currentTimeouts >= maxTimeouts) {
             await ludoGameLoop.handleForfeit(gameId, playerId);
             return;
+        }
+
+        // 2b. Warning on 4th timeout (for Casual)
+        if (maxTimeouts === 5 && currentTimeouts === 4) {
+            broadcastGameState(gameId, 'gameTimeoutWarning', {
+                playerId,
+                timeouts: currentTimeouts,
+                message: "WARNING: One more timeout and you will forfeit the match!"
+            });
         }
 
         // 3. Play Safe/Random Move
