@@ -19,11 +19,12 @@ export const initializeSocket = (socketIo) => {
             //console.log(`User ${socket.id} left game ${gameId}`);
         });
 
-        socket.on('gameAction', (data) => {
-            const { gameId } = data;
-            if (gameId) {
-                // Broadcast to everyone else in the room
-                socket.to(gameId).emit('gameStateUpdate', data);
+        socket.on('gameAction', (payload) => {
+            const { gameId, state, data } = payload;
+            const updateData = data || state;
+            if (gameId && updateData) {
+                // Broadcast the core board or action object directly
+                socket.to(gameId).emit('gameStateUpdate', updateData);
             }
         });
 
