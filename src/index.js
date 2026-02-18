@@ -6,6 +6,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import gameRoutes from './routes/game.route.js';
 import { initializeSocket } from './socket/socketManager.js';
+import { swaggerUi, specs } from './utils/swagger.js';
 
 dotenv.config();
 
@@ -32,6 +33,7 @@ initializeSocket(io);
 
 // Routes
 app.use('/api/games', gameRoutes);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
 
 // Basic health check
 app.get('/', (req, res) => {
