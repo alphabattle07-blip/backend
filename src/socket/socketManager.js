@@ -20,8 +20,11 @@ export const initializeSocket = (socketIo) => {
         });
 
         socket.on('gameAction', (data) => {
-            // Placeholder for generic game actions if needed
-            // Specific actions like move and roll are better handled separately or dispatched
+            const { gameId } = data;
+            if (gameId) {
+                // Broadcast to everyone else in the room
+                socket.to(gameId).emit('gameStateUpdate', data);
+            }
         });
 
         // In a real app, you'd want more robust auth here to map socket ID to user ID

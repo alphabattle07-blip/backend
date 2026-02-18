@@ -16,14 +16,16 @@ const TIME_LIMITS = {
     CASUAL: {
         TOTAL: 45000,
         ROLL: 15000, // 0-15s
-        MOVE: 20000, // 15-35s (Starts after roll)
-        WARNING: 10000, // Last 10s
+        MOVE: 20000, // 15-35s
+        WARNING: 15000, // Warning at 30s (15s left)
+        DANGER: 5000,   // Danger at 40s (5s left)
     },
     COMPETITIVE: { // Warrior and above
         TOTAL: 30000,
         ROLL: 8000, // 0-8s
         MOVE: 15000, // 8-23s
-        WARNING: 7000, // Last 7s
+        WARNING: 10000, // Warning at 20s (10s left)
+        DANGER: 4000,  // Danger at 26s (4s left)
     }
 };
 
@@ -131,6 +133,14 @@ export const ludoGameLoop = {
             });
         }, warningDelay);
 
+        // 2b. Danger Countdown
+        const dangerDelay = limits.TOTAL - limits.DANGER;
+        turnState.dangerTimeout = setTimeout(() => {
+            broadcastGameState(gameId, 'turnTimerDanger', {
+                timeLeft: limits.DANGER
+            });
+        }, dangerDelay);
+
         // 3. Turn Expiration (Forfeit/Safe Move)
         // If they haven't finished their turn (moved) by TOTAL
         turnState.turnTimeout = setTimeout(async () => {
@@ -143,6 +153,7 @@ export const ludoGameLoop = {
         if (state) {
             if (state.rollTimeout) clearTimeout(state.rollTimeout);
             if (state.warningTimeout) clearTimeout(state.warningTimeout);
+            if (state.dangerTimeout) clearTimeout(state.dangerTimeout);
             if (state.turnTimeout) clearTimeout(state.turnTimeout);
             activeGames.delete(gameId);
         }
@@ -203,9 +214,8 @@ export const ludoGameLoop = {
         board.players[playerIndex].timeouts += 1;
 
         const currentTimeouts = board.players[playerIndex].timeouts;
-        const state = activeGames.get(gameId); // Get limits from state if available, else re-derive
-        // Re-deriving for safety
-        const maxTimeouts = getMaxTimeouts(activeGames.get(gameId)?.maxTimeouts || 5); // Fallback to 5
+        const state = activeGames.get(gameId);
+        const maxTimeouts = state?.maxTimeouts || 5;
 
         // 2. Check Forfeit Condition
         if (currentTimeouts >= maxTimeouts) {
