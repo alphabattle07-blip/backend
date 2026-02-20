@@ -1,12 +1,12 @@
-
-import { broadcastGameState } from '../socket/socketManager.js';
+import redis from '../utils/redis.js';
+import { broadcastGameState, broadcastScrubbedState, broadcastOpponentMove } from '../socket/socketManager.js';
 import { PrismaClient } from '../generated/prisma/index.js';
-import { initializeGameData } from '../utils/gameUtils.js';
+import { whotGameEngine } from './whotGameEngine.js';
 
 const prisma = new PrismaClient();
 
-// In-memory storage for active game loops/timers
-// Key: gameId, Value: { timer: NodeJS.Timeout, startTime: number, warningTimer: NodeJS.Timeout, etc. }
+// In-memory storage for active game states + timers
+// Key: gameId, Value: { state: matchState, timers: { turnTimeout, etc. }, lock: Promise }
 const activeWhotGames = new Map();
 
 const RANK_THRESHOLDS = {
@@ -56,321 +56,270 @@ const isValidMove = (card, pileCard, calledSuit) => {
 
 export const whotGameLoop = {
     /**
-     * Start or reset the turn timer for a Whot game
+     * Start/Reset match in memory
      */
-    startTurnTimer: async (gameId, currentPlayerId) => {
-        // Clear existing timers
-        whotGameLoop.clearTurnTimer(gameId);
+    initializeMatch: async (gameId, player1, player2, config) => {
+        const state = whotGameEngine.initializeGame(gameId, player1, player2, config);
 
-        // Fetch game/player info to determine rank settings
-        const game = await prisma.game.findUnique({
-            where: { id: gameId },
-            include: {
-                player1: { select: { id: true, rating: true } },
-                player2: { select: { id: true, rating: true } }
+        const gameEntry = {
+            state,
+            timers: {},
+            lock: Promise.resolve()
+        };
+
+        activeWhotGames.set(gameId, gameEntry);
+
+        // Minimal state for Redis (Skip full market for performance if large, but here we keep it but could strip processedMoves)
+        const minimalState = { ...state };
+        delete minimalState.processedMoves; // Strip history from Redis
+
+        await redis.set(`match:${gameId}`, JSON.stringify(minimalState));
+
+        // Broadcast Initial Deal (Scrubbed)
+        broadcastScrubbedState(gameId, state);
+
+        return state;
+    },
+
+    /**
+     * Get Match State (Authoritative)
+     */
+    getMatchState: async (gameId) => {
+        let entry = activeWhotGames.get(gameId);
+        if (!entry) {
+            // Reconstruct from Redis
+            const cached = await redis.get(`match:${gameId}`);
+            if (cached) {
+                entry = {
+                    state: JSON.parse(cached),
+                    timers: {},
+                    lock: Promise.resolve()
+                };
+                activeWhotGames.set(gameId, entry);
+            }
+        }
+        return entry ? entry.state : null;
+    },
+
+    /**
+     * Reconnect-Ready State Snapshot: Packages EVERYTHING a player needs to resume.
+     */
+    getFullStateSnapshot: async (gameId, playerId) => {
+        const state = await whotGameLoop.getMatchState(gameId);
+        if (!state) return null;
+
+        const scrubbed = whotGameEngine.scrubState(state, playerId);
+        const limits = state.gameRankType === 'competitive' ? TIME_LIMITS.COMPETITIVE : TIME_LIMITS.CASUAL;
+        const elapsed = Date.now() - (state.timerStart || Date.now());
+
+        return {
+            ...scrubbed,
+            remainingTime: Math.max(0, limits.TOTAL - elapsed),
+            serverTime: Date.now()
+        };
+    },
+
+    /**
+     * Atomic Move Execution
+     */
+    executeMove: async (gameId, playerId, move) => {
+        const entry = activeWhotGames.get(gameId);
+        if (!entry) throw new Error("Match not found in memory");
+
+        // Wait for previous operations (Locking)
+        entry.lock = entry.lock.then(async () => {
+            try {
+                const state = entry.state;
+
+                // Validation
+                const validation = whotGameEngine.validateMove(state, playerId, move);
+                if (!validation.valid) throw new Error(validation.reason);
+
+                // Apply
+                const nextState = whotGameEngine.applyMove(state, playerId, move);
+
+                // Update Memory + Redis
+                entry.state = nextState;
+
+                const minimalState = { ...nextState };
+                delete minimalState.processedMoves;
+                await redis.set(`match:${gameId}`, JSON.stringify(minimalState));
+
+                // Clear/Restart Timers
+                whotGameLoop.startTurnTimer(gameId, nextState.turnPlayer);
+
+                // Success Broadcast
+                broadcastGameState(gameId, 'moveConfirmed', { moveId: move.moveId, playerId });
+
+                // 🚀 BROADCAST OPPONENT MOVE (For Animations via SocketService)
+                // Construct the WhotGameAction payload expected by frontend
+                let actionType = 'UNKNOWN';
+                if (move.type === 'PLAY_CARD') actionType = 'CARD_PLAYED';
+                else if (move.type === 'DRAW') actionType = 'PICK_CARD';
+                // Note: Frontend 'PICK_CARD' covers DRAW. 'FORCED_DRAW' is usually local logic triggering draws, 
+                // but if backend sees 'DRAW' from penalty it's still a pick.
+
+                const movePayload = {
+                    type: actionType,
+                    cardId: move.cardId,
+                    suitChoice: move.calledSuit,
+                    timestamp: Date.now()
+                };
+
+                // Special handling for forced draw or specific 'PICK_CARD' if meaningful differences exist
+                // but standard 'DRAW' maps to 'PICK_CARD' visual.
+
+                broadcastOpponentMove(gameId, playerId, movePayload);
+
+                // Sync State (Scrubbed) - still needed for consistency / verification
+                broadcastScrubbedState(gameId, nextState);
+
+                // Check Game End
+                if (nextState.status === 'COMPLETED') {
+                    await whotGameLoop.handleWin(gameId, nextState.winnerId, nextState);
+                }
+
+                return nextState;
+            } catch (err) {
+                console.error(`[WhotLoop] Move error: ${err.message}`);
+                throw err;
             }
         });
 
-        if (!game || game.status !== 'IN_PROGRESS') return;
+        return entry.lock;
+    },
 
-        // Verify it's actually this player's turn
-        // (Double check against DB currentTurn just in case, though usually controller handles this)
-        // if (game.currentTurn !== currentPlayerId) return;
+    /**
+     * Start or reset the turn timer for a Whot game
+     */
+    startTurnTimer: async (gameId, currentPlayerId) => {
+        whotGameLoop.clearTurnTimer(gameId);
 
-        const currentPlayer = game.player1Id === currentPlayerId ? game.player1 : game.player2;
-        if (!currentPlayer) return;
+        const entry = activeWhotGames.get(gameId);
+        if (!entry) return;
 
-        const limits = getWhotTimeLimits(currentPlayer.rating || 0);
-        const maxTimeouts = getWhotMaxTimeouts(currentPlayer.rating || 0);
+        const state = entry.state;
+        // In a real app, we'd fetch player ratings once at start and keep in state
+        // For now, let's assume casual/standard timing from state.gameRankType
+        const limits = state.gameRankType === 'competitive' ? TIME_LIMITS.COMPETITIVE : TIME_LIMITS.CASUAL;
 
-        const turnState = {
-            gameId,
-            playerId: currentPlayerId,
-            startTime: Date.now(),
-            limits,
-            maxTimeouts,
-            // Timers
-            warningTimeout: null,
-            dangerTimeout: null,
-            turnTimeout: null
-        };
+        entry.timers.startTime = Date.now();
+        entry.state.timerStart = entry.timers.startTime;
 
-        activeWhotGames.set(gameId, turnState);
-
-        // Broadcast timer start event
-        broadcastGameState(gameId, 'turnTimerStart', {
-            totalTime: limits.TOTAL,
+        broadcastGameState(gameId, 'turnStarted', {
+            whoseTurn: currentPlayerId,
+            timeLimit: limits.TOTAL,
+            serverTime: Date.now(),
+            // Keeping these for UI details if needed, but primary values are above
             warningTime: limits.WARNING,
             dangerTime: limits.DANGER,
-            startTime: turnState.startTime,
-            playerId: currentPlayerId
+            remainingTime: limits.TOTAL - (Date.now() - entry.timers.startTime)
         });
 
-        // 1. Warning Timer (Yellow/Red start)
-        turnState.warningTimeout = setTimeout(() => {
+        entry.timers.warningTimeout = setTimeout(() => {
             broadcastGameState(gameId, 'turnTimerWarning', {
                 timeLeft: limits.TOTAL - limits.WARNING,
                 type: 'warning'
             });
         }, limits.WARNING);
 
-        // 2. Danger Timer (Final countdown)
-        turnState.dangerTimeout = setTimeout(() => {
+        entry.timers.dangerTimeout = setTimeout(() => {
             broadcastGameState(gameId, 'turnTimerDanger', {
                 timeLeft: limits.TOTAL - limits.DANGER,
                 type: 'danger'
             });
         }, limits.DANGER);
 
-        // 3. Turn Expiration -> Auto Play
-        turnState.turnTimeout = setTimeout(async () => {
+        entry.timers.turnTimeout = setTimeout(async () => {
             await whotGameLoop.handleTurnTimeout(gameId, currentPlayerId);
         }, limits.TOTAL);
     },
 
     clearTurnTimer: (gameId) => {
-        const state = activeWhotGames.get(gameId);
-        if (state) {
-            if (state.warningTimeout) clearTimeout(state.warningTimeout);
-            if (state.dangerTimeout) clearTimeout(state.dangerTimeout);
-            if (state.turnTimeout) clearTimeout(state.turnTimeout);
-            activeWhotGames.delete(gameId);
+        const entry = activeWhotGames.get(gameId);
+        if (entry && entry.timers) {
+            if (entry.timers.warningTimeout) clearTimeout(entry.timers.warningTimeout);
+            if (entry.timers.dangerTimeout) clearTimeout(entry.timers.dangerTimeout);
+            if (entry.timers.turnTimeout) clearTimeout(entry.timers.turnTimeout);
         }
+    },
+
+    /**
+     * Recovery logic for server restarts
+     */
+    recoverMatches: async () => {
+        console.log('[WhotLoop] Recovering matches from Redis...');
+        const keys = await redis.keys('match:*');
+        for (const key of keys) {
+            const gameId = key.split(':')[1];
+            const cached = await redis.get(key);
+            if (cached) {
+                const state = JSON.parse(cached);
+                const entry = {
+                    state,
+                    timers: {},
+                    lock: Promise.resolve()
+                };
+                activeWhotGames.set(gameId, entry);
+
+                // Restart timer if still in progress
+                if (state.status === 'IN_PROGRESS') {
+                    const limits = getWhotTimeLimits(1750); // Fallback rating
+                    const elapsed = Date.now() - (state.timerStart || Date.now());
+                    const remaining = limits.TOTAL - elapsed;
+
+                    if (remaining > 0) {
+                        whotGameLoop.startTurnTimer(gameId, state.turnPlayer);
+                    } else {
+                        // Handle instant timeout if they were gone too long
+                        whotGameLoop.handleTurnTimeout(gameId, state.turnPlayer);
+                    }
+                }
+            }
+        }
+        console.log(`[WhotLoop] Recovered ${keys.length} matches.`);
     },
 
     handleTurnTimeout: async (gameId, playerId) => {
         console.log(`[WhotEngine] Turn timeout for ${playerId} in game ${gameId}`);
 
-        const game = await prisma.game.findUnique({ where: { id: gameId } });
-        if (!game) return;
+        const entry = activeWhotGames.get(gameId);
+        if (!entry) return;
 
-        let board = game.board;
-        if (typeof board === 'string') board = JSON.parse(board); // Handle JSON storage
+        entry.lock = entry.lock.then(async () => {
+            const state = entry.state;
 
-        // 1. Increment Timeout Count
-        const playerIndex = board.players.findIndex(p => p.id === playerId);
-        if (playerIndex === -1) return;
+            // 1. Increment Timeout Count
+            state.timeoutCount[playerId] = (state.timeoutCount[playerId] || 0) + 1;
+            const currentTimeouts = state.timeoutCount[playerId];
 
-        if (!board.players[playerIndex].timeouts) board.players[playerIndex].timeouts = 0;
-        board.players[playerIndex].timeouts += 1;
+            // In a real app we'd determine maxTimeouts from rating stored in state
+            const maxTimeouts = state.gameRankType === 'competitive' ? 3 : 5;
 
-        const currentTimeouts = board.players[playerIndex].timeouts;
-        const state = activeWhotGames.get(gameId); // Get limits from likely active state
-        // Fallback to recalculating if state is somehow gone (race condition)
-        // Note: We just cleared the timer, so state might be gone if we cleared it first? 
-        // No, 'clearTurnTimer' removes it from map. But we are inside the timeout callback.
-        // We should clear the map entry now that it fired.
-        whotGameLoop.clearTurnTimer(gameId);
-
-        // Re-calculate max timeouts to be safe
-        const playerObj = playerIndex === 0 ? game.player1 : game.player2; // We might need to refetch if not in board? 
-        // Actually board.players usually has minimal info. Let's rely on stored timeouts.
-        // Rank check:
-        // We can't easily get rank from board.players. 
-        // Let's assume passed limits were correct or fetch again.
-        // Fetching again is safer.
-        const freshGame = await prisma.game.findUnique({
-            where: { id: gameId },
-            include: { player1: { select: { rating: true } }, player2: { select: { rating: true } } }
-        });
-        const rating = (playerIndex === 0 ? freshGame.player1.rating : freshGame.player2.rating) || 0;
-        const maxTimeouts = getWhotMaxTimeouts(rating);
-
-        console.log(`[WhotEngine] Timeouts: ${currentTimeouts}/${maxTimeouts}`);
-
-        // 2. Check Forfeit
-        if (currentTimeouts >= maxTimeouts) {
-            await whotGameLoop.handleForfeit(gameId, playerId);
-            return;
-        }
-
-        // 2b. Warning on 4th timeout (for Casual)
-        if (maxTimeouts === 5 && currentTimeouts === 4) {
-            broadcastGameState(gameId, 'gameTimeoutWarning', {
-                playerId,
-                timeouts: currentTimeouts,
-                message: "WARNING: One more timeout and you will forfeit the match!"
-            });
-        }
-
-        // 3. Auto-Play Logic
-        await whotGameLoop.executeAutoPlay(game, board, playerIndex, playerId);
-    },
-
-    executeAutoPlay: async (game, board, playerIndex, playerId) => {
-        const playerHand = board.players[playerIndex].hand || [];
-        const pileCard = board.pile[board.pile.length - 1];
-        const calledSuit = board.calledSuit;
-
-        // Find best valid card
-        // Strategy: First valid card found.
-        // Priority: 
-        // 1. If 'Draw 2'/'Pick 3' active on me? (Not standard Whot unless defensive)
-        //    Standard Whot rules: 
-        //    If pending 'draw' action exists (someone played 2 against me), I must defend or draw.
-        //    Defense: Plays 2 or 14? Depending on rules. 
-        //    For simplicity: Check existing valid moves logic.
-
-        let validCardIndex = -1;
-
-        // Check if I am under attack
-        const pendingAction = board.pendingAction;
-        const mustDefend = pendingAction && pendingAction.type === 'draw' && pendingAction.playerIndex === playerIndex;
-        // If must defend, usually standard rules say I can defend with another 2 or 14 (if general market).
-        // Let's assume standard interaction:
-        // Filter hand for valid cards.
-
-        // Simple valid check loop
-        for (let i = 0; i < playerHand.length; i++) {
-            const card = playerHand[i];
-
-            // Special defense logic
-            if (mustDefend) {
-                // Can only play matching defense card (e.g. another 2)
-                // This depends heavily on specific game rules implemented in 'playCard' logic.
-                // If we want to be safe, we might just "Draw" if under attack to avoid complex rule validation here.
-                // But let's try to match number if 2.
-                const attackCardNum = 2; // Usually only 2 causes draw 2. 14 causes general market.
-                // For now, let's try standard validity. 
-                // If it fails validation in a real turn, it would be bad.
-                // Safest fallback: AUTO DRAW if under attack.
-                continue;
-            }
-
-            if (isValidMove(card, pileCard, calledSuit)) {
-                validCardIndex = i;
-                break;
-            }
-        }
-
-        // Action Construction
-        if (validCardIndex !== -1 && !mustDefend) {
-            // Play the card
-            const cardToPlay = playerHand[validCardIndex];
-
-            // Remove from hand
-            board.players[playerIndex].hand.splice(validCardIndex, 1);
-
-            // Add to pile
-            board.pile.push(cardToPlay);
-
-            // Handle Effects
-            // 1, 2, 5, 8, 14, 20
-            let nextPlayerIndex = playerIndex === 0 ? 1 : 0;
-            let skipTurn = false;
-            let pending = null;
-            let marketPick = 0;
-            let called = null;
-
-            if (cardToPlay.number === 1) { // HOLD ON
-                nextPlayerIndex = playerIndex; // Play again
-            } else if (cardToPlay.number === 2) { // PICK TWO
-                // Next player draws 2 unless they defend
-                pending = { type: 'draw', playerIndex: nextPlayerIndex, count: 2, sourceCard: cardToPlay };
-            } else if (cardToPlay.number === 5) { // PICK THREE (Standard?) Or just 5? 
-                // Often 5 is Pick 3 in some variations, or just regular. 
-                // Let's assume 5 is Pick 3 for now if that's the rule, otherwise nothing.
-                // User prompt didn't specify card rules, only timer rules.
-                // I will assume simple flow: 
-                // 14 = General Market (Usually)
-                // 8 = Suspension (Skip)
-            } else if (cardToPlay.number === 8) { // SUSPENSION
-                skipTurn = true; // effectively play again? No, usually skips next player. In 2 player, it means play again.
-                nextPlayerIndex = playerIndex;
-            } else if (cardToPlay.number === 14) { // GENERAL MARKET
-                // All players play? Or next player goes to market?
-                // Standard: Next player goes to market (Draw 1).
-                pending = { type: 'draw', playerIndex: nextPlayerIndex, count: 1, sourceCard: cardToPlay };
-            } else if (cardToPlay.number === 20) { // WHOT
-                // Request Suit? 
-                // Auto-play needs to pick a suit.
-                // Strategy: Pick suit of most cards in hand.
-                const suits = {};
-                board.players[playerIndex].hand.forEach(c => {
-                    suits[c.suit] = (suits[c.suit] || 0) + 1;
-                });
-                const bestSuit = Object.keys(suits).reduce((a, b) => suits[a] > suits[b] ? a : b, 'circle');
-                called = bestSuit;
-                // If Whot is played, turn usually passes unless it's a "Hold on" variant? 
-                // Standard: Turn passes.
-            }
-
-            board.calledSuit = called;
-            board.pendingAction = pending;
-
-            // Check Win
-            if (board.players[playerIndex].hand.length === 0) {
-                // Game Over
-                await whotGameLoop.handleWin(game.id, playerId, board);
+            // 2. Check Forfeit
+            if (currentTimeouts >= maxTimeouts) {
+                await whotGameLoop.handleForfeit(gameId, playerId);
                 return;
             }
 
-            // Update Turn
-            // If next is same (Hold On / Suspension in 2p), timer restarts for SAME player.
-            // If next is diff, timer starts for diff.
-            board.currentPlayer = nextPlayerIndex;
-            board.currentTurn = nextPlayerIndex === 0 ? game.player1Id : game.player2Id; // Map back
+            // 3. Authoritative Auto-Play via Engine
+            const nextState = whotGameEngine.handleTimeout(state, playerId);
 
-            // Save
-            await prisma.game.update({
-                where: { id: game.id },
-                data: {
-                    board: board,
-                    currentTurn: board.currentTurn
-                }
-            });
+            // Update Memory + Redis
+            entry.state = nextState;
+            await redis.set(`match:${gameId}`, JSON.stringify(nextState));
 
-            broadcastGameState(game.id, 'gameStateUpdate', { board });
+            // Success Broadcast (for Auto-Play)
+            broadcastGameState(gameId, 'moveConfirmed', { moveId: 'auto', playerId });
+            broadcastScrubbedState(gameId, nextState);
 
-            // Perform "Move" Broadcast so client knows who played what (for animation)
-            broadcastGameState(game.id, 'opponentMove', {
-                type: 'CARD_PLAYED',
-                cardId: cardToPlay.id,
-                playerId: playerId,
-                moveId: Date.now() // Simple ID
-            });
-
-            // Restart Timer
-            whotGameLoop.startTurnTimer(game.id, board.currentTurn);
-
-        } else {
-            // AUTO DRAW (No valid move OR must defend)
-            // Logic: Draw 1 card from Market.
-
-            let cardDrawn = null;
-            if (board.market.length > 0) {
-                cardDrawn = board.market.shift(); // Remove from front
-                board.players[playerIndex].hand.push(cardDrawn);
-            } else if (board.pile.length > 1) {
-                // Reshuffle Pile to Market?
-                // Simplified: Just say no card if market empty for now, or implement reshuffle.
-                // For Auto-play, let's keep it robust: if market empty, pass turn?
+            // If game ended
+            if (nextState.status === 'COMPLETED') {
+                await whotGameLoop.handleWin(gameId, nextState.winnerId, nextState);
+            } else {
+                whotGameLoop.startTurnTimer(gameId, nextState.turnPlayer);
             }
-
-            // Pass Turn
-            const nextPlayerIndex = playerIndex === 0 ? 1 : 0;
-            board.currentPlayer = nextPlayerIndex;
-            board.currentTurn = nextPlayerIndex === 0 ? game.player1Id : game.player2Id;
-
-            // Save
-            await prisma.game.update({
-                where: { id: game.id },
-                data: {
-                    board: board,
-                    currentTurn: board.currentTurn
-                }
-            });
-
-            broadcastGameState(game.id, 'gameStateUpdate', { board });
-            broadcastGameState(game.id, 'opponentMove', {
-                type: 'PICK_CARD',
-                playerId: playerId,
-                moveId: Date.now()
-            });
-
-            // Restart Timer
-            whotGameLoop.startTurnTimer(game.id, board.currentTurn);
-        }
+        });
     },
 
     handleWin: async (gameId, winnerId, board) => {
@@ -385,13 +334,16 @@ export const whotGameLoop = {
         });
         broadcastGameState(gameId, 'gameEnded', { winnerId });
         whotGameLoop.clearTurnTimer(gameId);
+        activeWhotGames.delete(gameId);
+        await redis.del(`match:${gameId}`);
     },
 
     handleForfeit: async (gameId, losingPlayerId) => {
         console.log(`[WhotEngine] Forfeit ${losingPlayerId} in game ${gameId}`);
 
-        const game = await prisma.game.findUnique({ where: { id: gameId } });
-        const winnerId = game.player1Id === losingPlayerId ? game.player2Id : game.player1Id;
+        const entry = activeWhotGames.get(gameId);
+        const state = entry ? entry.state : null;
+        const winnerId = state ? state.players.find(id => id !== losingPlayerId) : null;
 
         await prisma.game.update({
             where: { id: gameId },
@@ -409,5 +361,7 @@ export const whotGameLoop = {
         });
 
         whotGameLoop.clearTurnTimer(gameId);
+        activeWhotGames.delete(gameId);
+        await redis.del(`match:${gameId}`);
     }
 };

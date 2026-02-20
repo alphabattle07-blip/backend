@@ -4,7 +4,8 @@ import {
   joinGame,
   getAvailableGames,
   getGame,
-  updateGameState
+  updateGameState,
+  playWhotMove
 } from '../controllers/game.controller.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -386,5 +387,6 @@ router.post('/:gameId/join', joinGame);
  *                   example: "Internal server error"
  */
 router.put('/:gameId', updateGameState);
+router.post('/:gameId/move', playWhotMove);
 
 export default router;

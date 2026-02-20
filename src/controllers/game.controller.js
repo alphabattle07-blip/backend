@@ -4,48 +4,7 @@ import { ludoGameLoop } from '../engine/ludoGameLoop.js';
 import { broadcastGameState } from '../socket/socketManager.js';
 import { whotGameLoop } from '../engine/whotGameLoop.js';
 
-// Helper for Whot deck generation
-const SUIT_CARDS = {
-  circle: [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14],
-  triangle: [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14],
-  cross: [1, 2, 3, 5, 7, 10, 11, 13, 14],
-  square: [1, 2, 3, 5, 7, 10, 11, 13, 14],
-  star: [1, 2, 3, 4, 5, 7, 8],
-};
-
-const generateWhotDeck = (ruleVersion = "rule1") => {
-  const deck = [];
-  for (const suit in SUIT_CARDS) {
-    SUIT_CARDS[suit].forEach((num) => {
-      deck.push({
-        id: `${suit}-${num}`,
-        suit: suit,
-        number: num,
-        rank: `${suit}-${num}`,
-      });
-    });
-  }
-  const whotCount = ruleVersion === "rule1" ? 5 : 0;
-  for (let i = 1; i <= whotCount; i++) {
-    deck.push({
-      id: `whot-${i}`,
-      suit: "whot",
-      number: 20,
-      rank: `whot-${i}`,
-    });
-  }
-  return deck;
-};
-
-const shuffleArray = (array) => {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-};
-
+// Prisma client
 const prisma = new PrismaClient();
 
 // Create a new game
@@ -123,8 +82,15 @@ export const joinGame = async (req, res) => {
     };
 
     // Initialize state
-    const gameData = initializeGameData(game.gameType, game.player1, { id: userId, name: req.user.name || 'Opponent' });
-    Object.assign(updateData, gameData);
+    if (game.gameType === 'whot') {
+      const config = { gameRankType: game.player1.rating >= 1750 ? 'competitive' : 'casual' };
+      const board = await whotGameLoop.initializeMatch(gameId, game.player1, { id: userId, name: req.user.name || 'Opponent' }, config);
+      updateData.board = board;
+      updateData.currentTurn = board.turnPlayer;
+    } else {
+      const gameData = initializeGameData(game.gameType, game.player1, { id: userId, name: req.user.name || 'Opponent' });
+      Object.assign(updateData, gameData);
+    }
 
     const updatedGame = await prisma.game.update({
       where: { id: gameId },
@@ -135,13 +101,11 @@ export const joinGame = async (req, res) => {
       }
     });
 
-    // START GAME TIMER IF LUDO
+    // START GAME TIMER
     if (game.gameType === 'ludo') {
-      const firstPlayerId = updatedGame.player1Id; // Usually p1 starts
-      ludoGameLoop.startTurnTimer(gameId, firstPlayerId);
+      ludoGameLoop.startTurnTimer(gameId, updatedGame.player1Id);
     } else if (game.gameType === 'whot') {
-      const firstPlayerId = updatedGame.player1Id;
-      whotGameLoop.startTurnTimer(gameId, firstPlayerId);
+      whotGameLoop.startTurnTimer(gameId, updatedGame.currentTurn);
     }
 
     // Broadcast Join Event
@@ -211,6 +175,14 @@ export const getGame = async (req, res) => {
       });
     }
 
+    if (game.gameType === 'whot') {
+      const userId = req.user.id;
+      const snapshot = await whotGameLoop.getFullStateSnapshot(gameId, userId);
+      if (snapshot) {
+        game.board = snapshot;
+      }
+    }
+
     res.json({
       success: true,
       game
@@ -253,8 +225,18 @@ export const updateGameState = async (req, res) => {
     }
 
     const updateData = {};
-    if (board !== undefined) updateData.board = board;
-    if (currentTurn !== undefined) updateData.currentTurn = currentTurn;
+    if (board !== undefined) {
+      if (game.gameType === 'whot') {
+        return res.status(400).json({ success: false, message: 'Direct board updates not allowed for Whot. Use /move endpoint.' });
+      }
+      updateData.board = board;
+    }
+    if (currentTurn !== undefined) {
+      if (game.gameType === 'whot') {
+        return res.status(400).json({ success: false, message: 'Direct turn updates not allowed for Whot.' });
+      }
+      updateData.currentTurn = currentTurn;
+    }
     if (winnerId !== undefined) updateData.winnerId = winnerId;
     if (status !== undefined) updateData.status = status;
 
@@ -277,23 +259,6 @@ export const updateGameState = async (req, res) => {
       }
     });
 
-    // RESTART TIMER ON TURN CHANGE
-    // Only if the game is still in progress and it's a ludo game
-    if (game.gameType === 'ludo' && status !== 'COMPLETED') {
-      // If currentTurn changed (it might be passed in body, or we check updatedGame)
-      const nextTurn = updateData.currentTurn || game.currentTurn;
-
-      // We should always restart timing on any valid action that updates board/turn
-      if (nextTurn) {
-        ludoGameLoop.startTurnTimer(gameId, nextTurn);
-      }
-    } else if (game.gameType === 'whot' && status !== 'COMPLETED') {
-      const nextTurn = updateData.currentTurn || game.currentTurn;
-      if (nextTurn) {
-        whotGameLoop.startTurnTimer(gameId, nextTurn);
-      }
-    }
-
     res.json({
       success: true,
       game: updatedGame
@@ -303,6 +268,47 @@ export const updateGameState = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update game'
+    });
+  }
+};
+
+/**
+ * Server-Authoritative Whot Move
+ */
+export const playWhotMove = async (req, res) => {
+  try {
+    const { gameId } = req.params;
+    const { move } = req.body; // e.g. { type: 'PLAY_CARD', cardId: '...', calledSuit: '...', moveId: 123 }
+    const userId = req.user.id;
+
+    // Atomic Execution via Game Loop (Handles locking, validation, application, and persistence)
+    const nextState = await whotGameLoop.executeMove(gameId, userId, move);
+
+    res.json({
+      success: true,
+      board: whotGameEngine.scrubState(nextState, userId) // Return scrubbed state to player
+    });
+
+  } catch (error) {
+    console.error('[WhotMove] Error:', error);
+
+    // SECURITY: If move is invalid, force a sync with the authoritative state
+    const memState = await whotGameLoop.getMatchState(gameId);
+    if (memState) {
+      const scrubbed = whotGameEngine.scrubState(memState, userId);
+      // We can use broadcastGameState but specifically for this user if we had their socket
+      // For now, returning it in the error response is the standard sync path
+      return res.status(400).json({
+        success: false,
+        message: error.message || 'Invalid move',
+        forceFullSync: true,
+        board: scrubbed
+      });
+    }
+
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to process move'
     });
   }
 };
