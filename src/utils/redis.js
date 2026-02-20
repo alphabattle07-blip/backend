@@ -3,14 +3,36 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+// --- IN-MEMORY FALLBACK ---
+// This allows the server to run without a real Redis instance (Local Memory)
+class MemoryRedis {
+    constructor() {
+        this.data = new Map();
+        console.log('⚠️ [Redis] Using In-Memory Fallback (Local Storage)');
+    }
+    async get(key) { return this.data.get(key) || null; }
+    async set(key, value) { this.data.set(key, value); return 'OK'; }
+    async del(key) { this.data.delete(key); return 1; }
+    async keys(pattern) {
+        const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+        return Array.from(this.data.keys()).filter(k => regex.test(k));
+    }
+    on() { /* ignore events */ }
+    once() { /* ignore events */ }
+}
 
-redis.on('error', (err) => {
-    console.error('Redis error:', err);
-});
+const redis = process.env.REDIS_URL
+    ? new Redis(process.env.REDIS_URL)
+    : new MemoryRedis();
 
-redis.on('connect', () => {
-    console.log('Connected to Redis');
-});
+if (redis instanceof Redis) {
+    redis.on('error', (err) => {
+        console.error('Redis error:', err);
+    });
+
+    redis.on('connect', () => {
+        console.log('Connected to Redis');
+    });
+}
 
 export default redis;
