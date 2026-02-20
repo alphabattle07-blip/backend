@@ -40,6 +40,27 @@ const getWhotMaxTimeouts = (rating) => {
     return rating >= RANK_THRESHOLDS.WARRIOR ? MAX_TIMEOUTS.COMPETITIVE : MAX_TIMEOUTS.CASUAL;
 };
 
+// --- CENTRAL TICKER ENGINE ---
+// Replaces per-match setTimeouts. Checks all active matches every 300ms.
+setInterval(() => {
+    for (const [gameId, entry] of activeWhotGames.entries()) {
+        const state = entry.state;
+
+        // 1. Skip if already ended
+        if (state.status === 'COMPLETED') continue;
+
+        // 2. Skip if currently executing a move (lock is pending)
+        if (entry.isLocked) continue;
+
+        // 3. Check for timeout
+        const now = Date.now();
+        if (now >= state.turnStartTime + state.turnDuration) {
+            // Trigger timeout
+            whotGameLoop.handleTurnTimeout(gameId, state.turnPlayer);
+        }
+    }
+}, 300);
+
 // Helper: Check if card matches pile card
 const isValidMove = (card, pileCard, calledSuit) => {
     // Whot (20) matches anything
@@ -64,7 +85,8 @@ export const whotGameLoop = {
         const gameEntry = {
             state,
             timers: {},
-            lock: Promise.resolve()
+            lock: Promise.resolve(),
+            isLocked: false // Tracks atomic execution state for the central ticker
         };
 
         activeWhotGames.set(gameId, gameEntry);
@@ -93,7 +115,8 @@ export const whotGameLoop = {
                 entry = {
                     state: JSON.parse(cached),
                     timers: {},
-                    lock: Promise.resolve()
+                    lock: Promise.resolve(),
+                    isLocked: false
                 };
                 activeWhotGames.set(gameId, entry);
             }
@@ -108,13 +131,27 @@ export const whotGameLoop = {
         const state = await whotGameLoop.getMatchState(gameId);
         if (!state) return null;
 
-        const scrubbed = whotGameEngine.scrubState(state, playerId);
-        const limits = state.gameRankType === 'competitive' ? TIME_LIMITS.COMPETITIVE : TIME_LIMITS.CASUAL;
-        const elapsed = Date.now() - (state.timerStart || Date.now());
+        const elapsed = Date.now() - state.turnStartTime;
+        const remaining = state.turnDuration - elapsed;
+
+        // If a player reconnects EXACTLY as a timeout should occur, force it locally immediately
+        if (remaining <= 0 && state.status !== 'COMPLETED') {
+            await whotGameLoop.handleTurnTimeout(gameId, state.turnPlayer);
+            // Fetch the updated state after the automatic timeout
+            const updatedState = await whotGameLoop.getMatchState(gameId);
+            const scrubbed = whotGameEngine.scrubStateForClient(updatedState, playerId);
+            return {
+                ...scrubbed,
+                remainingTime: updatedState.turnDuration, // Restarted after timeout
+                serverTime: Date.now()
+            };
+        }
+
+        const scrubbed = whotGameEngine.scrubStateForClient(state, playerId);
 
         return {
             ...scrubbed,
-            remainingTime: Math.max(0, limits.TOTAL - elapsed),
+            remainingTime: Math.max(0, remaining),
             serverTime: Date.now()
         };
     },
@@ -128,8 +165,14 @@ export const whotGameLoop = {
 
         // Wait for previous operations (Locking)
         entry.lock = entry.lock.then(async () => {
+            entry.isLocked = true;
             try {
                 const state = entry.state;
+
+                // Anti-Desync Protection: Reject late moves
+                if (Date.now() > state.turnStartTime + state.turnDuration) {
+                    throw new Error("Move rejected: Time limit exceeded (Desync protection)");
+                }
 
                 // Validation
                 const validation = whotGameEngine.validateMove(state, playerId, move);
@@ -138,15 +181,18 @@ export const whotGameLoop = {
                 // Apply
                 const nextState = whotGameEngine.applyMove(state, playerId, move);
 
+                // ATOMIC TIMER RESET INSIDE LOCK
+                // This guarantees the ticker doesn't accidentally trigger a timeout between the move executing and the timer restarting.
+                nextState.turnStartTime = Date.now();
+                nextState.warningYellowAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 15000 : 20000);
+                nextState.warningRedAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 20000 : 40000);
+
                 // Update Memory + Redis
                 entry.state = nextState;
 
                 const minimalState = { ...nextState };
                 delete minimalState.processedMoves;
                 await redis.set(`match:${gameId}`, JSON.stringify(minimalState));
-
-                // Clear/Restart Timers
-                whotGameLoop.startTurnTimer(gameId, nextState.turnPlayer);
 
                 // Success Broadcast
                 broadcastGameState(gameId, 'moveConfirmed', { moveId: move.moveId, playerId });
@@ -156,18 +202,13 @@ export const whotGameLoop = {
                 let actionType = 'UNKNOWN';
                 if (move.type === 'PLAY_CARD') actionType = 'CARD_PLAYED';
                 else if (move.type === 'DRAW') actionType = 'PICK_CARD';
-                // Note: Frontend 'PICK_CARD' covers DRAW. 'FORCED_DRAW' is usually local logic triggering draws, 
-                // but if backend sees 'DRAW' from penalty it's still a pick.
 
                 const movePayload = {
                     type: actionType,
                     cardId: move.cardId,
-                    suitChoice: move.calledSuit,
+                    suitChoice: move.calledSuit, // Ensure suit selection applies in visual
                     timestamp: Date.now()
                 };
-
-                // Special handling for forced draw or specific 'PICK_CARD' if meaningful differences exist
-                // but standard 'DRAW' maps to 'PICK_CARD' visual.
 
                 broadcastOpponentMove(gameId, playerId, movePayload);
 
@@ -177,12 +218,16 @@ export const whotGameLoop = {
                 // Check Game End
                 if (nextState.status === 'COMPLETED') {
                     await whotGameLoop.handleWin(gameId, nextState.winnerId, nextState);
+                } else {
+                    whotGameLoop.startTurnTimer(gameId, nextState.turnPlayer);
                 }
 
                 return nextState;
             } catch (err) {
                 console.error(`[WhotLoop] Move error: ${err.message}`);
                 throw err;
+            } finally {
+                entry.isLocked = false;
             }
         });
 
@@ -193,55 +238,22 @@ export const whotGameLoop = {
      * Start or reset the turn timer for a Whot game
      */
     startTurnTimer: async (gameId, currentPlayerId) => {
-        whotGameLoop.clearTurnTimer(gameId);
-
+        // StartTurnTimer is now purely responsble for emitting the visual clock values to clients.
+        // It does NOT govern the actual timeout interval.
         const entry = activeWhotGames.get(gameId);
         if (!entry) return;
 
         const state = entry.state;
-        // In a real app, we'd fetch player ratings once at start and keep in state
-        // For now, let's assume casual/standard timing from state.gameRankType
-        const limits = state.gameRankType === 'competitive' ? TIME_LIMITS.COMPETITIVE : TIME_LIMITS.CASUAL;
-
-        entry.timers.startTime = Date.now();
-        entry.state.timerStart = entry.timers.startTime;
 
         broadcastGameState(gameId, 'turnStarted', {
             whoseTurn: currentPlayerId,
-            timeLimit: limits.TOTAL,
-            serverTime: Date.now(),
-            // Keeping these for UI details if needed, but primary values are above
-            warningTime: limits.WARNING,
-            dangerTime: limits.DANGER,
-            remainingTime: limits.TOTAL - (Date.now() - entry.timers.startTime)
+            timeLimit: state.turnDuration,
+            serverTime: Date.now()
         });
-
-        entry.timers.warningTimeout = setTimeout(() => {
-            broadcastGameState(gameId, 'turnTimerWarning', {
-                timeLeft: limits.TOTAL - limits.WARNING,
-                type: 'warning'
-            });
-        }, limits.WARNING);
-
-        entry.timers.dangerTimeout = setTimeout(() => {
-            broadcastGameState(gameId, 'turnTimerDanger', {
-                timeLeft: limits.TOTAL - limits.DANGER,
-                type: 'danger'
-            });
-        }, limits.DANGER);
-
-        entry.timers.turnTimeout = setTimeout(async () => {
-            await whotGameLoop.handleTurnTimeout(gameId, currentPlayerId);
-        }, limits.TOTAL);
     },
 
     clearTurnTimer: (gameId) => {
-        const entry = activeWhotGames.get(gameId);
-        if (entry && entry.timers) {
-            if (entry.timers.warningTimeout) clearTimeout(entry.timers.warningTimeout);
-            if (entry.timers.dangerTimeout) clearTimeout(entry.timers.dangerTimeout);
-            if (entry.timers.turnTimeout) clearTimeout(entry.timers.turnTimeout);
-        }
+        // Obsolete function kept for legacy. The central ticker manages execution now.
     },
 
     /**
@@ -258,20 +270,21 @@ export const whotGameLoop = {
                 const entry = {
                     state,
                     timers: {},
-                    lock: Promise.resolve()
+                    lock: Promise.resolve(),
+                    isLocked: false
                 };
                 activeWhotGames.set(gameId, entry);
 
                 // Restart timer if still in progress
                 if (state.status === 'IN_PROGRESS') {
-                    const limits = getWhotTimeLimits(1750); // Fallback rating
-                    const elapsed = Date.now() - (state.timerStart || Date.now());
-                    const remaining = limits.TOTAL - elapsed;
+                    const elapsed = Date.now() - state.turnStartTime;
+                    const remaining = state.turnDuration - elapsed;
 
                     if (remaining > 0) {
                         whotGameLoop.startTurnTimer(gameId, state.turnPlayer);
                     } else {
-                        // Handle instant timeout if they were gone too long
+                        // EXPLICIT REQUIREMENT 4: Handle instant timeout if they were gone too long
+                        // We do not wait for the next 300ms tick
                         whotGameLoop.handleTurnTimeout(gameId, state.turnPlayer);
                     }
                 }
@@ -287,37 +300,58 @@ export const whotGameLoop = {
         if (!entry) return;
 
         entry.lock = entry.lock.then(async () => {
-            const state = entry.state;
+            entry.isLocked = true;
+            try {
+                const state = entry.state;
 
-            // 1. Increment Timeout Count
-            state.timeoutCount[playerId] = (state.timeoutCount[playerId] || 0) + 1;
-            const currentTimeouts = state.timeoutCount[playerId];
+                // Make sure the state matches the intended player to avoid race condition timeouts
+                if (state.turnPlayer !== playerId || state.status === 'COMPLETED') return;
 
-            // In a real app we'd determine maxTimeouts from rating stored in state
-            const maxTimeouts = state.gameRankType === 'competitive' ? 3 : 5;
+                // Calculate timeout limits based on tier
+                const maxTimeouts = state.rankType === 'warrior' ? 3 : 5;
 
-            // 2. Check Forfeit
-            if (currentTimeouts >= maxTimeouts) {
-                await whotGameLoop.handleForfeit(gameId, playerId);
-                return;
-            }
+                // 1. Authoritative Auto-Play via Engine
+                // IMPORTANT: In the new implementation handleTurnTimeout edits state IN-PLACE and returns nextState.
+                // It increments the counter internally.
+                const nextState = whotGameEngine.handleTurnTimeout(state);
 
-            // 3. Authoritative Auto-Play via Engine
-            const nextState = whotGameEngine.handleTimeout(state, playerId);
+                // EXPLICIT REQUIREMENT 2: Time execution must reset timer safely inside atomic lock.
+                nextState.turnStartTime = Date.now();
+                nextState.warningYellowAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 15000 : 20000);
+                nextState.warningRedAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 20000 : 40000);
 
-            // Update Memory + Redis
-            entry.state = nextState;
-            await redis.set(`match:${gameId}`, JSON.stringify(nextState));
+                // Update Memory + Redis
+                entry.state = nextState;
+                const minimalState = { ...nextState };
+                delete minimalState.processedMoves;
+                await redis.set(`match:${gameId}`, JSON.stringify(minimalState));
 
-            // Success Broadcast (for Auto-Play)
-            broadcastGameState(gameId, 'moveConfirmed', { moveId: 'auto', playerId });
-            broadcastScrubbedState(gameId, nextState);
+                // Success Broadcast (for Auto-Play)
+                broadcastGameState(gameId, 'moveConfirmed', { moveId: 'auto', playerId });
 
-            // If game ended
-            if (nextState.status === 'COMPLETED') {
-                await whotGameLoop.handleWin(gameId, nextState.winnerId, nextState);
-            } else {
-                whotGameLoop.startTurnTimer(gameId, nextState.turnPlayer);
+                // We broadcast an opponent move so animations trigger seamlessly. 
+                // We pull the final action visually based on recent history...
+                // (This is skipped for now because usually scrubbedState sync handles it, though we could guess)
+
+                broadcastScrubbedState(gameId, nextState);
+
+                // 2. Check Forfeit
+                // The counter is bumped inside handleTurnTimeout
+                if (nextState.timeoutCount[playerId] >= maxTimeouts) {
+                    await whotGameLoop.handleForfeit(gameId, playerId);
+                    return;
+                }
+
+                // If game ended
+                if (nextState.status === 'COMPLETED') {
+                    await whotGameLoop.handleWin(gameId, nextState.winnerId, nextState);
+                } else {
+                    whotGameLoop.startTurnTimer(gameId, nextState.turnPlayer);
+                }
+            } catch (err) {
+                console.error(`[WhotLoop] Timeout error: ${err.message}`);
+            } finally {
+                entry.isLocked = false;
             }
         });
     },
