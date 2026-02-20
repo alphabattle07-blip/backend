@@ -198,15 +198,20 @@ export const whotGameLoop = {
                 broadcastGameState(gameId, 'moveConfirmed', { moveId: move.moveId, playerId });
 
                 // 🚀 BROADCAST OPPONENT MOVE (For Animations via SocketService)
-                // Construct the WhotGameAction payload expected by frontend
                 let actionType = 'UNKNOWN';
                 if (move.type === 'PLAY_CARD') actionType = 'CARD_PLAYED';
                 else if (move.type === 'DRAW') actionType = 'PICK_CARD';
 
+                // Include full card data for CARD_PLAYED — once played, the card is public
+                const playedCard = move.type === 'PLAY_CARD'
+                    ? nextState.discardPile[nextState.discardPile.length - 1]
+                    : null;
+
                 const movePayload = {
                     type: actionType,
                     cardId: move.cardId,
-                    suitChoice: move.calledSuit, // Ensure suit selection applies in visual
+                    card: playedCard, // Full card data for rendering on opponent's screen
+                    suitChoice: move.calledSuit,
                     timestamp: Date.now()
                 };
 
