@@ -1,5 +1,6 @@
 import { ludoGameLoop } from '../engine/ludoGameLoop.js';
 import { whotGameEngine } from '../engine/whotGameEngine.js';
+import { whotGameLoop } from '../engine/whotGameLoop.js';
 
 let io;
 // Map to track userId -> Set of socketIds (to handle multiple sessions/tabs)
@@ -34,9 +35,23 @@ export const initializeSocket = (socketIo) => {
             socket.leave(gameId);
         });
 
-        socket.on('gameAction', (payload) => {
+        socket.on('gameAction', async (payload) => {
             const { gameId, state, data, gameType } = payload;
-            if (gameType === 'whot') return;
+
+            if (gameType === 'whot') {
+                const userId = socketUser.get(socket.id);
+                if (userId && gameId && data) {
+                    try {
+                        console.log(`[Socket] Processing Whot move for user ${userId} in game ${gameId}`);
+                        await whotGameLoop.executeMove(gameId, userId, data);
+                    } catch (err) {
+                        console.error(`[Socket] Whot Move Error: ${err.message}`);
+                        socket.emit('error', { message: err.message });
+                    }
+                }
+                return;
+            }
+
             const updateData = data || state;
             if (gameId && updateData) {
                 socket.to(gameId).emit('gameStateUpdate', updateData);
