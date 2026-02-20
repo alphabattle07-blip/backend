@@ -1,5 +1,7 @@
 import { PrismaClient } from '../generated/prisma/index.js';
 import { initializeGameData } from '../utils/gameUtils.js';
+import { whotGameLoop } from '../engine/whotGameLoop.js';
+import { whotGameEngine } from '../engine/whotGameEngine.js';
 
 const prisma = new PrismaClient();
 
@@ -80,21 +82,52 @@ export const startMatchmaking = async (req, res) => {
             });
 
             // Create game with both players
-            const gameData = initializeGameData(gameType, opponent, user);
-            const game = await prisma.game.create({
-                data: {
-                    gameType,
-                    player1Id: bestMatch.userId, // The player who was waiting
-                    player2Id: userId, // The player who just joined
-                    status: 'IN_PROGRESS',
-                    ...gameData,
-                    startedAt: new Date()
-                },
-                include: {
-                    player1: { select: { id: true, name: true, rating: true } },
-                    player2: { select: { id: true, name: true, rating: true } }
-                }
-            });
+            let game;
+            if (gameType === 'whot') {
+                game = await prisma.game.create({
+                    data: {
+                        gameType,
+                        player1Id: bestMatch.userId, // The player who was waiting
+                        player2Id: userId, // The player who just joined
+                        status: 'IN_PROGRESS',
+                        startedAt: new Date()
+                    },
+                    include: {
+                        player1: { select: { id: true, name: true, rating: true } },
+                        player2: { select: { id: true, name: true, rating: true } }
+                    }
+                });
+                const config = { gameRankType: opponent.rating >= 1750 ? 'competitive' : 'casual' };
+                const matchState = await whotGameLoop.initializeMatch(game.id, game.player1, game.player2, config);
+                game = await prisma.game.update({
+                    where: { id: game.id },
+                    data: { board: matchState, currentTurn: matchState.turnPlayer },
+                    include: {
+                        player1: { select: { id: true, name: true, rating: true } },
+                        player2: { select: { id: true, name: true, rating: true } }
+                    }
+                });
+                whotGameLoop.startTurnTimer(game.id, matchState.turnPlayer);
+
+                // Return explicitly scrubbed state to the client
+                game.board = whotGameEngine.scrubStateForClient(matchState, userId);
+            } else {
+                const gameData = initializeGameData(gameType, opponent, user);
+                game = await prisma.game.create({
+                    data: {
+                        gameType,
+                        player1Id: bestMatch.userId, // The player who was waiting
+                        player2Id: userId, // The player who just joined
+                        status: 'IN_PROGRESS',
+                        ...gameData,
+                        startedAt: new Date()
+                    },
+                    include: {
+                        player1: { select: { id: true, name: true, rating: true } },
+                        player2: { select: { id: true, name: true, rating: true } }
+                    }
+                });
+            }
 
             return res.json({
                 success: true,
@@ -185,6 +218,9 @@ export const checkMatchmakingStatus = async (req, res) => {
             });
 
             if (recentGame) {
+                if (recentGame.gameType === 'whot' && recentGame.board) {
+                    recentGame.board = whotGameEngine.scrubStateForClient(recentGame.board, userId);
+                }
                 return res.json({
                     success: true,
                     matched: true,
@@ -220,21 +256,51 @@ export const checkMatchmakingStatus = async (req, res) => {
                 select: { id: true, name: true, rating: true }
             });
 
-            const gameData = initializeGameData(gameType, user, opponent);
-            const game = await prisma.game.create({
-                data: {
-                    gameType,
-                    player1Id: userId,
-                    player2Id: bestMatch.userId,
-                    status: 'IN_PROGRESS',
-                    ...gameData,
-                    startedAt: new Date()
-                },
-                include: {
-                    player1: { select: { id: true, name: true, rating: true } },
-                    player2: { select: { id: true, name: true, rating: true } }
-                }
-            });
+            let game;
+            if (gameType === 'whot') {
+                game = await prisma.game.create({
+                    data: {
+                        gameType,
+                        player1Id: userId,
+                        player2Id: bestMatch.userId,
+                        status: 'IN_PROGRESS',
+                        startedAt: new Date()
+                    },
+                    include: {
+                        player1: { select: { id: true, name: true, rating: true } },
+                        player2: { select: { id: true, name: true, rating: true } }
+                    }
+                });
+                const config = { gameRankType: user.rating >= 1750 ? 'competitive' : 'casual' };
+                const matchState = await whotGameLoop.initializeMatch(game.id, game.player1, game.player2, config);
+                game = await prisma.game.update({
+                    where: { id: game.id },
+                    data: { board: matchState, currentTurn: matchState.turnPlayer },
+                    include: {
+                        player1: { select: { id: true, name: true, rating: true } },
+                        player2: { select: { id: true, name: true, rating: true } }
+                    }
+                });
+                whotGameLoop.startTurnTimer(game.id, matchState.turnPlayer);
+
+                game.board = whotGameEngine.scrubStateForClient(matchState, userId);
+            } else {
+                const gameData = initializeGameData(gameType, user, opponent);
+                game = await prisma.game.create({
+                    data: {
+                        gameType,
+                        player1Id: userId,
+                        player2Id: bestMatch.userId,
+                        status: 'IN_PROGRESS',
+                        ...gameData,
+                        startedAt: new Date()
+                    },
+                    include: {
+                        player1: { select: { id: true, name: true, rating: true } },
+                        player2: { select: { id: true, name: true, rating: true } }
+                    }
+                });
+            }
 
             return res.json({
                 success: true,

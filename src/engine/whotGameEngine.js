@@ -307,5 +307,59 @@ export const whotGameEngine = {
         });
 
         return scrubbed;
+    },
+
+    /**
+     * Scrub GameState into the exact format expected by the frontend React components
+     */
+    scrubStateForClient: (matchState, playerId) => {
+        const opponentId = matchState.players.find(id => id !== playerId);
+
+        // Build placeholder cards for opponent (face-down)
+        const oppCount = matchState.playerHands[opponentId]?.length || 0;
+        const oppPlaceholders = Array.from({ length: oppCount }, (_, i) => ({
+            id: `hidden-${opponentId}-${i}`, suit: 'hidden', number: 0
+        }));
+
+        const myHand = matchState.playerHands[playerId] || [];
+        const topCard = matchState.discardPile[matchState.discardPile.length - 1];
+
+        // Ensure proper turn index (0 for self, 1 for opponent in local view)
+        // Actually, the frontend WhotOnline always considers player 0 as the 'local' player 
+        // IF it doesn't rotate, OR the component handles the rotation properly based on ID.
+        // Wait, WhotOnline expects `currentPlayer: number`. Let's provide 0 if it's my turn, 1 if opponent.
+        const currentPlayerIndex = matchState.turnPlayer === playerId ? 0 : 1;
+
+        const pendingPick = matchState.pendingPenalty?.type === 'draw' ? matchState.pendingPenalty.count : 0;
+        const pendingAction = matchState.pendingPenalty ? {
+            type: matchState.pendingPenalty.type,
+            count: matchState.pendingPenalty.count,
+            playerIndex: matchState.pendingPenalty.targetId === playerId ? 0 : 1
+        } : null;
+
+        return {
+            players: [
+                { id: playerId, name: playerId, hand: myHand },
+                { id: opponentId, name: opponentId, hand: oppPlaceholders }
+            ],
+            pile: matchState.discardPile,
+            market: Array.from({ length: matchState.market.length }, (_, i) => ({
+                id: `hidden-market-${i}`, suit: 'hidden', number: 0
+            })),
+            currentPlayer: currentPlayerIndex,
+            direction: 1,
+            ruleVersion: 'rule1',
+            pendingPick,
+            calledSuit: matchState.calledSuit,
+            lastPlayedCard: topCard,
+            pendingAction,
+            winner: matchState.winnerId ? { id: matchState.winnerId } : null,
+            status: matchState.status,
+            allCards: [
+                ...myHand,
+                ...oppPlaceholders,
+                ...matchState.discardPile // Let the client handle the rest since it just needs unique IDs
+            ]
+        };
     }
 };
