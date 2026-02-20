@@ -41,13 +41,13 @@ export const initializeSocket = (socketIo) => {
             if (gameType === 'whot') {
                 const userId = socketUser.get(socket.id);
                 if (userId && gameId && data) {
-                    try {
-                        console.log(`[Socket] Processing Whot move for user ${userId} in game ${gameId}`);
-                        await whotGameLoop.executeMove(gameId, userId, data);
-                    } catch (err) {
-                        console.error(`[Socket] Whot Move Error: ${err.message}`);
-                        socket.emit('error', { message: err.message });
-                    }
+                    // Map backend types back to frontend action types for the opponent
+                    const frontendAction = { ...data };
+                    if (data.type === 'PLAY_CARD') frontendAction.type = 'CARD_PLAYED';
+                    else if (data.type === 'DRAW') frontendAction.type = 'PICK_CARD';
+
+                    console.log(`[Socket] Relaying Whot action for user ${userId} in game ${gameId}:`, frontendAction.type);
+                    broadcastOpponentMove(gameId, userId, frontendAction);
                 }
                 return;
             }
