@@ -328,18 +328,13 @@ export const whotGameEngine = {
     scrubStateForClient: (matchState, playerId) => {
         const opponentId = matchState.players.find(id => id !== playerId);
 
-        // FOG-OF-WAR: Use REAL card IDs for stable tracking, but hide suit/number
-        const oppHand = (matchState.playerHands[opponentId] || []).map(c => ({
-            id: c.id, suit: 'hidden', number: 0
-        }));
-
+        // Send REAL card data for all cards.
+        // Visual security is handled by face-down rendering at the 'computer' position.
+        // IndividualAnimatedCard needs real suit/number to render correctly when
+        // flipped face-up (e.g., when played to the pile).
+        const oppHand = matchState.playerHands[opponentId] || [];
         const myHand = matchState.playerHands[playerId] || [];
         const topCard = matchState.discardPile[matchState.discardPile.length - 1];
-
-        // FOG-OF-WAR: Market cards use real IDs but hidden data
-        const marketFogged = (matchState.market || []).map(c => ({
-            id: c.id, suit: 'hidden', number: 0
-        }));
 
         const currentPlayerIndex = matchState.turnPlayer === playerId ? 0 : 1;
 
@@ -356,7 +351,7 @@ export const whotGameEngine = {
                 { id: opponentId, name: opponentId, hand: oppHand }
             ],
             pile: matchState.discardPile,
-            market: marketFogged,
+            market: matchState.market,
             currentPlayer: currentPlayerIndex,
             direction: 1,
             ruleVersion: 'rule1',
@@ -375,7 +370,7 @@ export const whotGameEngine = {
             allCards: [
                 ...myHand,
                 ...oppHand,
-                ...marketFogged,
+                ...matchState.market,
                 ...matchState.discardPile
             ]
         };
