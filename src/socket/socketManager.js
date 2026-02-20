@@ -94,7 +94,7 @@ export const broadcastScrubbedState = async (gameId, state) => {
         const userId = socketUser.get(socketId);
         if (userId) {
             const scrubbed = whotGameEngine.scrubStateForClient(state, userId);
-            io.to(socketId).emit('gameStateUpdate', { board: scrubbed });
+            io.to(socketId).emit('gameStateUpdate', { board: scrubbed, serverTime: Date.now() });
         }
     }
 };

@@ -329,9 +329,29 @@ export const whotGameLoop = {
                 // Success Broadcast (for Auto-Play)
                 broadcastGameState(gameId, 'moveConfirmed', { moveId: 'auto', playerId });
 
-                // We broadcast an opponent move so animations trigger seamlessly. 
-                // We pull the final action visually based on recent history...
-                // (This is skipped for now because usually scrubbedState sync handles it, though we could guess)
+                // 🎯 BROADCAST OPPONENT MOVE so animations trigger on both screens
+                // Determine what the engine auto-played by comparing discard piles
+                const oldPileLen = state.discardPile.length;
+                const newPileLen = nextState.discardPile.length;
+
+                if (newPileLen > oldPileLen) {
+                    // A card was played
+                    const playedCard = nextState.discardPile[newPileLen - 1];
+                    const movePayload = {
+                        type: 'CARD_PLAYED',
+                        cardId: playedCard.id,
+                        suitChoice: playedCard.number === 20 ? 'circle' : undefined,
+                        timestamp: Date.now()
+                    };
+                    broadcastOpponentMove(gameId, playerId, movePayload);
+                } else {
+                    // A card was drawn
+                    const movePayload = {
+                        type: 'PICK_CARD',
+                        timestamp: Date.now()
+                    };
+                    broadcastOpponentMove(gameId, playerId, movePayload);
+                }
 
                 broadcastScrubbedState(gameId, nextState);
 
