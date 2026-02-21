@@ -225,8 +225,7 @@ export const whotGameEngine = {
         const hand = newState.playerHands[playerId];
 
         newState.timerStart = Date.now();
-        // NOTE: calledSuit is ONLY cleared inside PLAY_CARD, NOT on DRAW.
-        // A draw should NOT clear the called suit.
+        newState.calledSuit = null;
 
         if (move.moveId) {
             newState.lastMoveId = move.moveId;
@@ -269,9 +268,6 @@ export const whotGameEngine = {
             const cardIndex = hand.findIndex(c => c.id === move.cardId);
             const card = hand.splice(cardIndex, 1)[0];
             newState.discardPile.push(card);
-
-            // Clear calledSuit when any card is played (the Whot case re-sets it below)
-            newState.calledSuit = null;
 
             let nextTurnPlayer = opponentId;
 
@@ -447,40 +443,18 @@ export const whotGameEngine = {
 
         const currentPlayerIndex = matchState.turnPlayer === playerId ? 0 : 1;
 
-        // Map server state to client-compatible pendingAction format.
-        // The client rules.ts uses:
-        //   - pendingAction.type === 'defend' → allow defense plays (matching number)
-        //   - pendingAction.type === 'continue' → continuation state (matching suit)
-        //   - pendingAction.type === 'draw' → forced draw (no card play allowed)
-        //   - pendingAction.type === 'call_suit' → must select a suit
-        let pendingAction = null;
-
-        if (matchState.pendingPenalty && matchState.pendingPenalty.type === 'draw') {
-            const targetIndex = matchState.pendingPenalty.targetId === playerId ? 0 : 1;
-            // If the penalty targets the current turn player, it's a "defend" state
-            // (they can counter with matching number). Otherwise it's a forced draw.
-            pendingAction = {
-                type: 'defend',
-                count: matchState.pendingPenalty.count,
-                playerIndex: targetIndex,
-                returnTurnTo: targetIndex === 0 ? 1 : 0
-            };
-        }
-
-        // Continuation state overrides pendingAction for the active player
-        if (matchState.continuationState && matchState.continuationState.active) {
-            const contIndex = matchState.continuationState.playerId === playerId ? 0 : 1;
-            pendingAction = {
-                type: 'continue',
-                playerIndex: contIndex
-            };
-        }
-
-        // If a Whot was just played and calledSuit is set, the NEXT player needs to see
-        // that a suit was called. For the calling player, the suit selector was handled locally.
-        // The opponent sees calledSuit in the scrubbed state and rules.ts uses it.
-
         const pendingPick = matchState.pendingPenalty?.type === 'draw' ? matchState.pendingPenalty.count : 0;
+        const pendingAction = matchState.pendingPenalty ? {
+            type: matchState.pendingPenalty.type,
+            count: matchState.pendingPenalty.count,
+            playerIndex: matchState.pendingPenalty.targetId === playerId ? 0 : 1
+        } : null;
+
+        // Map continuation state to client-friendly format
+        const continuationAction = matchState.continuationState ? {
+            active: matchState.continuationState.active,
+            playerIndex: matchState.continuationState.playerId === playerId ? 0 : 1
+        } : null;
 
         return {
             players: [
@@ -496,6 +470,7 @@ export const whotGameEngine = {
             calledSuit: matchState.calledSuit,
             lastPlayedCard: topCard,
             pendingAction,
+            continuationAction,
             winner: matchState.winnerId ? { id: matchState.winnerId } : null,
             status: matchState.status,
             turnStartTime: matchState.turnStartTime || matchState.timerStart,
