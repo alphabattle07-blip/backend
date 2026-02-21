@@ -83,7 +83,11 @@ export const joinGame = async (req, res) => {
 
     // Initialize state
     if (game.gameType === 'whot') {
-      const config = { gameRankType: game.player1.rating >= 1750 ? 'competitive' : 'casual' };
+      const highestRating = Math.max(game.player1.rating || 0, (req.user.rating || 0));
+      const config = {
+        gameRankType: highestRating >= 1750 ? 'competitive' : 'casual',
+        ruleVersion: highestRating >= 1750 ? 'rule2' : 'rule1'
+      };
       const board = await whotGameLoop.initializeMatch(gameId, game.player1, { id: userId, name: req.user.name || 'Opponent' }, config);
       updateData.board = board;
       updateData.currentTurn = board.turnPlayer;

@@ -1,7 +1,9 @@
 
 /**
  * Whot Game Engine (Server-Authoritative)
- * Controls game rules, turn order, card distribution, and state transitions.
+ * Supports two rule sets:
+ *   - Rule 1 (Standard): 54-card deck, all specials including Whot
+ *   - Rule 2 (Aggressive/Warrior+): 49-card deck, no Whot, continuation for 2/14, 5/8 normal
  */
 
 const SUIT_CARDS = {
@@ -21,9 +23,15 @@ const SPECIAL_NUMBERS = {
     WHOT: 20
 };
 
+// Which card numbers are "special" per rule set
+const RULE1_SPECIALS = new Set([1, 2, 5, 8, 14, 20]);
+const RULE2_SPECIALS = new Set([1, 2, 14]); // 5, 8 are normal; 20 not in deck
+
 export const whotGameEngine = {
     /**
-     * Generate a standard Whot deck
+     * Generate a Whot deck based on the rule version.
+     *   Rule 1: SUIT_CARDS + 5 Whot cards = 54
+     *   Rule 2: SUIT_CARDS only, no Whot cards = 49
      */
     generateDeck: (ruleVersion = "rule1") => {
         const deck = [];
@@ -37,15 +45,18 @@ export const whotGameEngine = {
             });
         }
 
-        // Add Whot cards
-        const whotCount = ruleVersion === "rule1" ? 5 : 4; // Standard is usually 5
-        for (let i = 1; i <= whotCount; i++) {
-            deck.push({
-                id: `whot-${i}-${Math.random().toString(36).substr(2, 5)}`,
-                suit: "whot",
-                number: SPECIAL_NUMBERS.WHOT
-            });
+        if (ruleVersion === "rule1") {
+            // Add 5 Whot cards for Rule 1
+            for (let i = 1; i <= 5; i++) {
+                deck.push({
+                    id: `whot-${i}-${Math.random().toString(36).substr(2, 5)}`,
+                    suit: "whot",
+                    number: SPECIAL_NUMBERS.WHOT
+                });
+            }
         }
+        // Rule 2: No Whot cards added — deck stays at 49
+
         return deck;
     },
 
@@ -59,6 +70,16 @@ export const whotGameEngine = {
             [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
         }
         return shuffled;
+    },
+
+    /**
+     * Check if a card is "special" under the given rule version
+     */
+    isSpecialCard: (card, ruleVersion = "rule1") => {
+        if (ruleVersion === "rule2") {
+            return RULE2_SPECIALS.has(card.number);
+        }
+        return RULE1_SPECIALS.has(card.number);
     },
 
     /**
@@ -85,7 +106,7 @@ export const whotGameEngine = {
 
         // Initial pile card (cannot be a special card for starting)
         let firstCard = deck.pop();
-        while (whotGameEngine.isSpecialCard(firstCard) && deck.length > 0) {
+        while (whotGameEngine.isSpecialCard(firstCard, ruleVersion) && deck.length > 0) {
             deck.unshift(firstCard);
             firstCard = deck.pop();
         }
@@ -97,6 +118,7 @@ export const whotGameEngine = {
         return {
             matchId,
             players,
+            ruleVersion,
             turnPlayer: player1.id,
             discardPile: [firstCard],
             market: deck,
@@ -108,6 +130,7 @@ export const whotGameEngine = {
             warningRedAt: turnStartTime + (rankType === 'warrior' ? 20000 : 40000),
             timeoutCount: { [player1.id]: 0, [player2.id]: 0 },
             pendingPenalty: null,
+            continuationState: null, // Rule 2 only: { playerId, active: true }
             gameRankType: rankType,
             rankType: rankType,
             calledSuit: null,
@@ -115,10 +138,6 @@ export const whotGameEngine = {
             lastMoveId: 0,
             processedMoves: []
         };
-    },
-
-    isSpecialCard: (card) => {
-        return Object.values(SPECIAL_NUMBERS).includes(card.number);
     },
 
     /**
@@ -134,36 +153,58 @@ export const whotGameEngine = {
             return { valid: false, reason: "Duplicate moveId" };
         }
 
+        const ruleVersion = matchState.ruleVersion || "rule1";
         const hand = matchState.playerHands[playerId];
         const topCard = matchState.discardPile[matchState.discardPile.length - 1];
 
-        // Case 1: Drawing a card
+        // ── DRAW ──
         if (move.type === 'DRAW') {
             return { valid: true };
         }
 
-        // Case 2: Playing a card
+        // ── PLAY_CARD ──
         if (move.type === 'PLAY_CARD') {
             const card = hand.find(c => c.id === move.cardId);
             if (!card) return { valid: false, reason: "Card not in hand" };
 
-            // If under attack
+            // ── Under attack (pendingPenalty targeting this player) ──
             if (matchState.pendingPenalty && matchState.pendingPenalty.type === 'draw' && matchState.pendingPenalty.targetId === playerId) {
+                // Can defend by playing the same number as the attack card
                 if (card.number === topCard.number) {
                     return { valid: true };
                 }
                 return { valid: false, reason: "Must defend or draw" };
             }
 
-            if (card.number === SPECIAL_NUMBERS.WHOT) {
+            // ── Continuation state (both rules) ──
+            if (matchState.continuationState && matchState.continuationState.active && matchState.continuationState.playerId === playerId) {
+                // In continuation: must play a card matching pile suit OR another continuation-triggering special (2 or 14)
+                if (card.number === SPECIAL_NUMBERS.PICK_TWO || card.number === SPECIAL_NUMBERS.GENERAL_MARKET) {
+                    return { valid: true }; // Another special extends the continuation
+                }
+                // In Rule 1, Whot can break continuation
+                if (card.number === SPECIAL_NUMBERS.WHOT && ruleVersion === "rule1") {
+                    return { valid: true };
+                }
+                if (card.suit === topCard.suit || card.number === topCard.number) {
+                    return { valid: true }; // Matching suit or number
+                }
+                return { valid: false, reason: "Must play matching suit/number or another special to continue, or draw to end turn" };
+            }
+
+            // ── Whot card (Rule 1 only — shouldn't exist in Rule 2 deck) ──
+            if (card.number === SPECIAL_NUMBERS.WHOT && ruleVersion === "rule1") {
                 return { valid: true };
             }
 
+            // ── Called suit check ──
             if (matchState.calledSuit) {
                 if (card.suit === matchState.calledSuit) return { valid: true };
+                // In Rule 1, Whot can always be played (handled above)
                 return { valid: false, reason: `Must match called suit: ${matchState.calledSuit}` };
             }
 
+            // ── Standard match: suit or number ──
             if (card.suit === topCard.suit || card.number === topCard.number) {
                 return { valid: true };
             }
@@ -179,6 +220,7 @@ export const whotGameEngine = {
      */
     applyMove: (matchState, playerId, move) => {
         const newState = JSON.parse(JSON.stringify(matchState));
+        const ruleVersion = newState.ruleVersion || "rule1";
         const opponentId = newState.players.find(id => id !== playerId);
         const hand = newState.playerHands[playerId];
 
@@ -191,6 +233,9 @@ export const whotGameEngine = {
             if (newState.processedMoves.length > 50) newState.processedMoves.shift();
         }
 
+        // ────────────────────────────────────────
+        // DRAW
+        // ────────────────────────────────────────
         if (move.type === 'DRAW') {
             let drawCount = 1;
             if (newState.pendingPenalty && newState.pendingPenalty.type === 'draw' && newState.pendingPenalty.targetId === playerId) {
@@ -207,10 +252,18 @@ export const whotGameEngine = {
                 }
             }
 
+            // Drawing ends continuation state (Rule 2)
+            if (newState.continuationState && newState.continuationState.active && newState.continuationState.playerId === playerId) {
+                newState.continuationState = null;
+            }
+
             newState.turnPlayer = opponentId;
             return newState;
         }
 
+        // ────────────────────────────────────────
+        // PLAY_CARD
+        // ────────────────────────────────────────
         if (move.type === 'PLAY_CARD') {
             const cardIndex = hand.findIndex(c => c.id === move.cardId);
             const card = hand.splice(cardIndex, 1)[0];
@@ -218,32 +271,108 @@ export const whotGameEngine = {
 
             let nextTurnPlayer = opponentId;
 
+            // Helper: stack penalty counts when defending/counter-attacking
             const getNewPenaltyCount = (addedCount) => {
                 if (matchState.pendingPenalty && matchState.pendingPenalty.type === 'draw' && matchState.pendingPenalty.targetId === playerId) {
+                    // Counter-attack: add to existing penalty and redirect
                     return matchState.pendingPenalty.count + addedCount;
                 }
                 return addedCount;
             };
 
-            switch (card.number) {
-                case SPECIAL_NUMBERS.HOLD_ON:
-                case SPECIAL_NUMBERS.SUSPENSION:
-                    nextTurnPlayer = playerId;
-                    break;
-                case SPECIAL_NUMBERS.PICK_TWO:
-                    newState.pendingPenalty = { type: 'draw', count: getNewPenaltyCount(2), targetId: opponentId };
-                    break;
-                case SPECIAL_NUMBERS.PICK_THREE:
-                    newState.pendingPenalty = { type: 'draw', count: getNewPenaltyCount(3), targetId: opponentId };
-                    break;
-                case SPECIAL_NUMBERS.GENERAL_MARKET:
-                    newState.pendingPenalty = { type: 'draw', count: getNewPenaltyCount(1), targetId: opponentId };
-                    break;
-                case SPECIAL_NUMBERS.WHOT:
-                    newState.calledSuit = move.calledSuit || 'circle';
-                    break;
+            // ── RULE 1: Standard Effects ──
+            if (ruleVersion === "rule1") {
+                switch (card.number) {
+                    case SPECIAL_NUMBERS.HOLD_ON: // 1
+                        nextTurnPlayer = playerId; // Play again
+                        break;
+
+                    case SPECIAL_NUMBERS.SUSPENSION: // 8
+                        nextTurnPlayer = playerId; // Skip opponent
+                        break;
+
+                    case SPECIAL_NUMBERS.PICK_TWO: // 2
+                        newState.pendingPenalty = { type: 'draw', count: getNewPenaltyCount(2), targetId: opponentId };
+                        nextTurnPlayer = opponentId; // Turn passes, opponent must defend or draw
+                        break;
+
+                    case SPECIAL_NUMBERS.PICK_THREE: // 5
+                        newState.pendingPenalty = { type: 'draw', count: getNewPenaltyCount(3), targetId: opponentId };
+                        nextTurnPlayer = opponentId; // Turn passes, opponent must defend or draw
+                        break;
+
+                    case SPECIAL_NUMBERS.GENERAL_MARKET: { // 14
+                        // Same in both rules: opponent draws 1 immediately, player enters continuation
+                        const oppHand = newState.playerHands[opponentId];
+                        if (newState.market.length === 0) whotGameEngine.reshufflePile(newState);
+                        if (newState.market.length > 0) oppHand.push(newState.market.pop());
+                        newState.pendingPenalty = null;
+                        newState.continuationState = { playerId, active: true };
+                        nextTurnPlayer = playerId; // Player stays in turn
+                        break;
+                    }
+
+                    case SPECIAL_NUMBERS.WHOT: // 20
+                        newState.calledSuit = move.calledSuit || 'circle';
+                        nextTurnPlayer = opponentId;
+                        break;
+                }
             }
 
+            // ── RULE 2: Aggressive Effects ──
+            if (ruleVersion === "rule2") {
+                switch (card.number) {
+                    case SPECIAL_NUMBERS.HOLD_ON: // 1
+                        nextTurnPlayer = playerId; // Play again
+                        // Clear continuation — Hold On resets the continuation chain
+                        newState.continuationState = null;
+                        break;
+
+                    case SPECIAL_NUMBERS.PICK_TWO: { // 2
+                        // If player was under attack (pendingPenalty targeting them), this is a counter-attack
+                        if (matchState.pendingPenalty && matchState.pendingPenalty.type === 'draw' && matchState.pendingPenalty.targetId === playerId) {
+                            // Counter: redirect stacked penalty to opponent
+                            newState.pendingPenalty = { type: 'draw', count: getNewPenaltyCount(2), targetId: opponentId };
+                            nextTurnPlayer = opponentId;
+                        } else {
+                            // Aggressive play: opponent draws 2 immediately, player enters continuation
+                            const drawCount = 2;
+                            const oppHand = newState.playerHands[opponentId];
+                            for (let i = 0; i < drawCount; i++) {
+                                if (newState.market.length === 0) whotGameEngine.reshufflePile(newState);
+                                if (newState.market.length > 0) oppHand.push(newState.market.pop());
+                            }
+                            newState.pendingPenalty = null;
+                            newState.continuationState = { playerId, active: true };
+                            nextTurnPlayer = playerId; // Player stays in turn
+                        }
+                        break;
+                    }
+
+                    case SPECIAL_NUMBERS.GENERAL_MARKET: { // 14
+                        // Opponent draws 1 immediately, player enters continuation
+                        const oppHand = newState.playerHands[opponentId];
+                        if (newState.market.length === 0) whotGameEngine.reshufflePile(newState);
+                        if (newState.market.length > 0) oppHand.push(newState.market.pop());
+                        newState.pendingPenalty = null;
+                        newState.continuationState = { playerId, active: true };
+                        nextTurnPlayer = playerId; // Player stays in turn
+                        break;
+                    }
+
+                    // 5 (Pick Three) and 8 (Suspension) are NORMAL in Rule 2 — no special effect
+                    // 20 (Whot) doesn't exist in the deck
+
+                    default:
+                        // Normal card played during continuation: continuation ends, turn passes
+                        if (newState.continuationState && newState.continuationState.active && newState.continuationState.playerId === playerId) {
+                            newState.continuationState = null;
+                        }
+                        break;
+                }
+            }
+
+            // ── WIN CHECK ──
             if (hand.length === 0) {
                 newState.status = 'COMPLETED';
                 newState.winnerId = playerId;
@@ -266,29 +395,7 @@ export const whotGameEngine = {
     },
 
     /**
-     * Handle turn timeout
-     */
-    handleTimeout: (matchState, playerId) => {
-        const hand = matchState.playerHands[playerId];
-
-        for (const card of hand) {
-            const validation = whotGameEngine.validateMove(matchState, playerId, { type: 'PLAY_CARD', cardId: card.id });
-            if (validation.valid) {
-                let calledSuit = null;
-                if (card.number === SPECIAL_NUMBERS.WHOT) {
-                    const suits = {};
-                    hand.forEach(c => { if (c.suit !== 'whot') suits[c.suit] = (suits[c.suit] || 0) + 1; });
-                    calledSuit = Object.keys(suits).reduce((a, b) => suits[a] > suits[b] ? a : b, 'circle');
-                }
-                return whotGameEngine.applyMove(matchState, playerId, { type: 'PLAY_CARD', cardId: card.id, calledSuit });
-            }
-        }
-
-        return whotGameEngine.applyMove(matchState, playerId, { type: 'DRAW' });
-    },
-
-    /**
-     * Scrub game state for a specific player (Fog of War)
+     * Scrub game state for a specific player (Fog of War) — simple format
      */
     scrubState: (matchState, playerId) => {
         const scrubbed = {
@@ -303,16 +410,17 @@ export const whotGameEngine = {
             warningRedAt: matchState.warningRedAt || 0,
             timeoutCount: matchState.timeoutCount || {},
             rankType: matchState.rankType || 'casual',
-            timerStart: matchState.timerStart, // legacy
+            timerStart: matchState.timerStart,
             pendingPenalty: matchState.pendingPenalty,
+            continuationState: matchState.continuationState,
             calledSuit: matchState.calledSuit,
             status: matchState.status,
             winnerId: matchState.winnerId,
             gameRankType: matchState.gameRankType,
+            ruleVersion: matchState.ruleVersion || 'rule1',
             marketCount: matchState.market.length
         };
 
-        // Populate opponent counts
         matchState.players.forEach(pId => {
             if (pId !== playerId) {
                 scrubbed.opponentHandCount[pId] = matchState.playerHands[pId].length;
@@ -327,11 +435,8 @@ export const whotGameEngine = {
      */
     scrubStateForClient: (matchState, playerId) => {
         const opponentId = matchState.players.find(id => id !== playerId);
+        const ruleVersion = matchState.ruleVersion || 'rule1';
 
-        // Send REAL card data for all cards.
-        // Visual security is handled by face-down rendering at the 'computer' position.
-        // IndividualAnimatedCard needs real suit/number to render correctly when
-        // flipped face-up (e.g., when played to the pile).
         const oppHand = matchState.playerHands[opponentId] || [];
         const myHand = matchState.playerHands[playerId] || [];
         const topCard = matchState.discardPile[matchState.discardPile.length - 1];
@@ -345,6 +450,12 @@ export const whotGameEngine = {
             playerIndex: matchState.pendingPenalty.targetId === playerId ? 0 : 1
         } : null;
 
+        // Map continuation state to client-friendly format
+        const continuationAction = matchState.continuationState ? {
+            active: matchState.continuationState.active,
+            playerIndex: matchState.continuationState.playerId === playerId ? 0 : 1
+        } : null;
+
         return {
             players: [
                 { id: playerId, name: playerId, hand: myHand },
@@ -354,11 +465,12 @@ export const whotGameEngine = {
             market: matchState.market,
             currentPlayer: currentPlayerIndex,
             direction: 1,
-            ruleVersion: 'rule1',
+            ruleVersion,
             pendingPick,
             calledSuit: matchState.calledSuit,
             lastPlayedCard: topCard,
             pendingAction,
+            continuationAction,
             winner: matchState.winnerId ? { id: matchState.winnerId } : null,
             status: matchState.status,
             turnStartTime: matchState.turnStartTime || matchState.timerStart,
@@ -378,57 +490,79 @@ export const whotGameEngine = {
 
     /**
      * Handle Turn Timeout (Smart Auto-Play)
-     * Priority: 1. Play valid non-penalty card 2. Draw card 3. Play if drawn card valid 4. End turn
+     * Rule-aware: respects Rule 1 vs Rule 2 special cards and continuation state.
      */
     handleTurnTimeout: (matchState) => {
         const turnPlayer = matchState.turnPlayer;
+        const ruleVersion = matchState.ruleVersion || "rule1";
         const hand = matchState.playerHands[turnPlayer] || [];
         const topCard = matchState.discardPile[matchState.discardPile.length - 1];
 
         // 1. Increment Timeout Count
         matchState.timeoutCount[turnPlayer] = (matchState.timeoutCount[turnPlayer] || 0) + 1;
 
-        // 2. Find a valid card to play autonomously
-        let cardToPlay = null;
+        // 2. If there's a pending penalty targeting this player, auto-draw
+        if (matchState.pendingPenalty && matchState.pendingPenalty.targetId === turnPlayer) {
+            return whotGameEngine.applyMove(matchState, turnPlayer, { type: 'DRAW' });
+        }
 
-        if (matchState.pendingPenalty) {
-            // Must defend or draw. Auto-play favors drawing so we don't accidentally waste good defense cards.
-            // (You could improve this by auto-defending if holding a 2 or 5)
-        } else {
-            // Find valid cards
+        // 3. Continuation: if in continuation, try to play a valid card or draw to end
+        if (matchState.continuationState && matchState.continuationState.active && matchState.continuationState.playerId === turnPlayer) {
+            // Try to find a valid continuation card (matching suit/number or 2/14)
             const validCards = hand.filter(card => {
-                if (card.number === SPECIAL_NUMBERS.WHOT) return true;
-                if (matchState.calledSuit) return card.suit === matchState.calledSuit;
+                if (card.number === SPECIAL_NUMBERS.PICK_TWO || card.number === SPECIAL_NUMBERS.GENERAL_MARKET) return true;
                 return card.suit === topCard.suit || card.number === topCard.number;
             });
 
             if (validCards.length > 0) {
-                // Prefer non-special cards, and non-Whot cards
-                const nonSpecial = validCards.filter(c => !whotGameEngine.isSpecialCard(c));
-                if (nonSpecial.length > 0) {
-                    cardToPlay = nonSpecial[0]; // Just pick the first non-special
-                } else {
-                    // Try to save 20s for last
+                // Prefer non-special
+                const nonSpecial = validCards.filter(c => !RULE2_SPECIALS.has(c.number));
+                const cardToPlay = nonSpecial.length > 0 ? nonSpecial[0] : validCards[0];
+                return whotGameEngine.applyMove(matchState, turnPlayer, { type: 'PLAY_CARD', cardId: cardToPlay.id });
+            }
+
+            // No valid card — draw to end continuation
+            return whotGameEngine.applyMove(matchState, turnPlayer, { type: 'DRAW' });
+        }
+
+        // 4. Standard auto-play: find valid cards
+        let cardToPlay = null;
+
+        const validCards = hand.filter(card => {
+            if (ruleVersion === "rule1" && card.number === SPECIAL_NUMBERS.WHOT) return true;
+            if (matchState.calledSuit) return card.suit === matchState.calledSuit;
+            return card.suit === topCard.suit || card.number === topCard.number;
+        });
+
+        if (validCards.length > 0) {
+            // Prefer non-special cards
+            const specialSet = ruleVersion === "rule2" ? RULE2_SPECIALS : RULE1_SPECIALS;
+            const nonSpecial = validCards.filter(c => !specialSet.has(c.number));
+            if (nonSpecial.length > 0) {
+                cardToPlay = nonSpecial[0];
+            } else {
+                // For Rule 1: try to save Whot (20) for last
+                if (ruleVersion === "rule1") {
                     const notTwenty = validCards.filter(c => c.number !== SPECIAL_NUMBERS.WHOT);
-                    if (notTwenty.length > 0) {
-                        cardToPlay = notTwenty[0];
-                    } else {
-                        cardToPlay = validCards[0]; // Have to play the 20
-                    }
+                    cardToPlay = notTwenty.length > 0 ? notTwenty[0] : validCards[0];
+                } else {
+                    cardToPlay = validCards[0];
                 }
             }
         }
 
-        let nextState;
         if (cardToPlay) {
-            // Auto-play the chosen card
-            const move = { type: 'PLAY_CARD', cardId: cardToPlay.id, suitChoice: 'circle' }; // Give default suit for 20
-            nextState = whotGameEngine.applyMove(matchState, turnPlayer, move);
-        } else {
-            // Draw a card
-            nextState = whotGameEngine.applyMove(matchState, turnPlayer, { type: 'DRAW' });
+            const move = { type: 'PLAY_CARD', cardId: cardToPlay.id };
+            // For Whot card (Rule 1), pick the most common suit in hand
+            if (cardToPlay.number === SPECIAL_NUMBERS.WHOT) {
+                const suits = {};
+                hand.forEach(c => { if (c.suit !== 'whot') suits[c.suit] = (suits[c.suit] || 0) + 1; });
+                move.calledSuit = Object.keys(suits).reduce((a, b) => suits[a] > suits[b] ? a : b, 'circle');
+            }
+            return whotGameEngine.applyMove(matchState, turnPlayer, move);
         }
 
-        return nextState;
+        // No valid card — draw
+        return whotGameEngine.applyMove(matchState, turnPlayer, { type: 'DRAW' });
     }
 };
