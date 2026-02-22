@@ -300,14 +300,27 @@ export const whotGameEngine = {
 
             let nextTurnPlayer = opponentId;
 
-            // Helper: stack penalty counts when defending/counter-attacking
-            const getNewPenaltyCount = (addedCount) => {
-                if (matchState.pendingPenalty && matchState.pendingPenalty.type === 'draw' && matchState.pendingPenalty.targetId === playerId) {
-                    // Counter-attack: add to existing penalty and redirect
-                    return matchState.pendingPenalty.count + addedCount;
+            // ══════════════════════════════════════════════════════
+            // DEFENSE INTERCEPTION — runs BEFORE any rule-specific logic
+            // If player is under penalty AND plays the matching defense card,
+            // the penalty is CANCELLED entirely. Turn returns to attacker.
+            // ══════════════════════════════════════════════════════
+            const isUnderPenalty = matchState.pendingPenalty &&
+                matchState.pendingPenalty.type === 'draw' &&
+                matchState.pendingPenalty.targetId === playerId;
+
+            if (isUnderPenalty) {
+                const defenseNumber = matchState.pendingPenalty.cardNumber ||
+                    matchState.discardPile[matchState.discardPile.length - 2]?.number; // fallback: card before the one just played
+
+                if (card.number === defenseNumber) {
+                    // ✅ DEFENSE SUCCESSFUL — penalty cancelled completely
+                    console.log(`[Engine] DEFENSE: ${card.number} cancels penalty. Penalty cleared.`);
+                    newState.pendingPenalty = null;
+                    newState.turnPlayer = opponentId; // Turn returns to the original attacker
+                    return newState;
                 }
-                return addedCount;
-            };
+            }
 
             // ── RULE 1: Standard Effects ──
             if (ruleVersion === "rule1") {
@@ -321,23 +334,25 @@ export const whotGameEngine = {
                         break;
 
                     case SPECIAL_NUMBERS.PICK_TWO: // 2
+                        // Fresh attack (defense was handled above)
                         newState.pendingPenalty = {
                             type: 'draw',
-                            count: getNewPenaltyCount(2),
-                            cardNumber: 2, // Track which card created the penalty
+                            count: 2,
+                            cardNumber: 2,
                             targetId: opponentId
                         };
-                        nextTurnPlayer = opponentId; // Turn passes, opponent must defend or draw
+                        nextTurnPlayer = opponentId;
                         break;
 
                     case SPECIAL_NUMBERS.PICK_THREE: // 5
+                        // Fresh attack (defense was handled above)
                         newState.pendingPenalty = {
                             type: 'draw',
-                            count: getNewPenaltyCount(3),
-                            cardNumber: 5, // Track which card created the penalty
+                            count: 3,
+                            cardNumber: 5,
                             targetId: opponentId
                         };
-                        nextTurnPlayer = opponentId; // Turn passes, opponent must defend or draw
+                        nextTurnPlayer = opponentId;
                         break;
 
                     case SPECIAL_NUMBERS.GENERAL_MARKET: { // 14
@@ -362,53 +377,39 @@ export const whotGameEngine = {
             if (ruleVersion === "rule2") {
                 switch (card.number) {
                     case SPECIAL_NUMBERS.HOLD_ON: // 1
-                        nextTurnPlayer = playerId; // Play again
-                        // Clear continuation — Hold On resets the continuation chain
+                        nextTurnPlayer = playerId;
                         newState.continuationState = null;
                         break;
 
-                    case SPECIAL_NUMBERS.PICK_TWO: { // 2
-                        // If player was under attack (pendingPenalty targeting them), this is a counter-attack
-                        if (matchState.pendingPenalty && matchState.pendingPenalty.type === 'draw' && matchState.pendingPenalty.targetId === playerId) {
-                            // Counter: redirect stacked penalty to opponent
-                            newState.pendingPenalty = {
-                                type: 'draw',
-                                count: getNewPenaltyCount(2),
-                                cardNumber: 2,
-                                targetId: opponentId
-                            };
-                            nextTurnPlayer = opponentId;
-                        } else {
-                            // Aggressive play: opponent draws 2 immediately, player enters continuation
-                            const drawCount = 2;
-                            const oppHand = newState.playerHands[opponentId];
-                            for (let i = 0; i < drawCount; i++) {
-                                if (newState.market.length === 0) whotGameEngine.reshufflePile(newState);
-                                if (newState.market.length > 0) oppHand.push(newState.market.pop());
-                            }
-                            newState.pendingPenalty = null;
-                            newState.continuationState = { playerId, active: true };
-                            nextTurnPlayer = playerId; // Player stays in turn
+                    case SPECIAL_NUMBERS.PICK_TWO: {
+                        // Defense already handled by interception block above.
+                        // If we're here, it's a fresh attack.
+                        const drawCount = 2;
+                        const oppHandR2 = newState.playerHands[opponentId];
+                        for (let i = 0; i < drawCount; i++) {
+                            if (newState.market.length === 0) whotGameEngine.reshufflePile(newState);
+                            if (newState.market.length > 0) oppHandR2.push(newState.market.pop());
                         }
-                        break;
-                    }
-
-                    case SPECIAL_NUMBERS.GENERAL_MARKET: { // 14
-                        // Opponent draws 1 immediately, player enters continuation
-                        const oppHand = newState.playerHands[opponentId];
-                        if (newState.market.length === 0) whotGameEngine.reshufflePile(newState);
-                        if (newState.market.length > 0) oppHand.push(newState.market.pop());
                         newState.pendingPenalty = null;
                         newState.continuationState = { playerId, active: true };
-                        nextTurnPlayer = playerId; // Player stays in turn
+                        nextTurnPlayer = playerId;
                         break;
                     }
 
-                    // 5 (Pick Three) and 8 (Suspension) are NORMAL in Rule 2 — no special effect
+                    case SPECIAL_NUMBERS.GENERAL_MARKET: {
+                        const oppHandGM = newState.playerHands[opponentId];
+                        if (newState.market.length === 0) whotGameEngine.reshufflePile(newState);
+                        if (newState.market.length > 0) oppHandGM.push(newState.market.pop());
+                        newState.pendingPenalty = null;
+                        newState.continuationState = { playerId, active: true };
+                        nextTurnPlayer = playerId;
+                        break;
+                    }
+
+                    // 5 (Pick Three) and 8 (Suspension) are NORMAL in Rule 2
                     // 20 (Whot) doesn't exist in the deck
 
                     default:
-                        // Normal card played during continuation: continuation ends, turn passes
                         if (newState.continuationState && newState.continuationState.active && newState.continuationState.playerId === playerId) {
                             newState.continuationState = null;
                         }
