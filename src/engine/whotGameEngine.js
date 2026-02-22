@@ -112,7 +112,7 @@ export const whotGameEngine = {
         }
 
         const rankType = config.gameRankType === 'warrior' ? 'warrior' : 'casual';
-        const turnDuration = rankType === 'warrior' ? 25000 : 50000;
+        const turnDuration = rankType === 'warrior' ? 19000 : 25000;
         const turnStartTime = Date.now();
 
         return {
@@ -126,8 +126,8 @@ export const whotGameEngine = {
             timerStart: turnStartTime,
             turnStartTime: turnStartTime,
             turnDuration: turnDuration,
-            warningYellowAt: turnStartTime + (rankType === 'warrior' ? 15000 : 20000),
-            warningRedAt: turnStartTime + (rankType === 'warrior' ? 20000 : 40000),
+            warningYellowAt: turnStartTime + (rankType === 'warrior' ? 7000 : 10000),
+            warningRedAt: turnStartTime + (rankType === 'warrior' ? 14000 : 20000),
             timeoutCount: { [player1.id]: 0, [player2.id]: 0 },
             pendingPenalty: null,
             continuationState: null, // Rule 2 only: { playerId, active: true }
@@ -450,7 +450,7 @@ export const whotGameEngine = {
             playerHand: matchState.playerHands[playerId] || [],
             opponentHandCount: {},
             turnStartTime: matchState.turnStartTime || matchState.timerStart,
-            turnDuration: matchState.turnDuration || (matchState.gameRankType === 'warrior' ? 25000 : 50000),
+            turnDuration: matchState.turnDuration || (matchState.gameRankType === 'warrior' ? 19000 : 25000),
             warningYellowAt: matchState.warningYellowAt || 0,
             warningRedAt: matchState.warningRedAt || 0,
             timeoutCount: matchState.timeoutCount || {},
@@ -522,7 +522,7 @@ export const whotGameEngine = {
             winner: matchState.winnerId ? { id: matchState.winnerId } : null,
             status: matchState.status,
             turnStartTime: matchState.turnStartTime || matchState.timerStart,
-            turnDuration: matchState.turnDuration || (matchState.gameRankType === 'warrior' ? 25000 : 50000),
+            turnDuration: matchState.turnDuration || (matchState.gameRankType === 'warrior' ? 19000 : 25000),
             warningYellowAt: matchState.warningYellowAt || 0,
             warningRedAt: matchState.warningRedAt || 0,
             timeoutCount: matchState.timeoutCount || {},

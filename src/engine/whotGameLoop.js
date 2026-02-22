@@ -15,14 +15,14 @@ const RANK_THRESHOLDS = {
 
 const TIME_LIMITS = {
     CASUAL: { // Below 1750
-        TOTAL: 50000, // 50s
-        WARNING: 20000, // At 20s elapsed (30s left) - Yellow
-        DANGER: 40000,  // At 40s elapsed (10s left) - Red
+        TOTAL: 25000, // 25s
+        WARNING: 10000, // At 10s elapsed (15s left) - Yellow
+        DANGER: 20000,  // At 20s elapsed (5s left) - Red
     },
     COMPETITIVE: { // Warrior+ (1750+)
-        TOTAL: 30000, // 30s
-        WARNING: 15000, // At 15s elapsed (15s left) - Red Warning starts
-        DANGER: 25000,  // At 25s elapsed (5s left) - Final Danger
+        TOTAL: 19000, // 19s
+        WARNING: 7000, // At 7s elapsed (12s left) - Yellow
+        DANGER: 14000,  // At 14s elapsed (5s left) - Red
     }
 };
 
@@ -184,8 +184,8 @@ export const whotGameLoop = {
                 // ATOMIC TIMER RESET INSIDE LOCK
                 // This guarantees the ticker doesn't accidentally trigger a timeout between the move executing and the timer restarting.
                 nextState.turnStartTime = Date.now();
-                nextState.warningYellowAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 15000 : 20000);
-                nextState.warningRedAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 20000 : 40000);
+                nextState.warningYellowAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 7000 : 10000);
+                nextState.warningRedAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 14000 : 20000);
 
                 // Update Memory + Redis
                 entry.state = nextState;
@@ -322,8 +322,8 @@ export const whotGameLoop = {
 
                 // EXPLICIT REQUIREMENT 2: Time execution must reset timer safely inside atomic lock.
                 nextState.turnStartTime = Date.now();
-                nextState.warningYellowAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 15000 : 20000);
-                nextState.warningRedAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 20000 : 40000);
+                nextState.warningYellowAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 7000 : 10000);
+                nextState.warningRedAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 14000 : 20000);
 
                 // Update Memory + Redis
                 entry.state = nextState;
