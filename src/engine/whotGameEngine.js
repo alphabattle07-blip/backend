@@ -169,11 +169,15 @@ export const whotGameEngine = {
 
             // ── Under attack (pendingPenalty targeting this player) ──
             if (matchState.pendingPenalty && matchState.pendingPenalty.type === 'draw' && matchState.pendingPenalty.targetId === playerId) {
-                // Can defend by playing the same number as the attack card
-                if (card.number === topCard.number) {
-                    return { valid: true };
+                // Defense: must play the SAME NUMBER as the penalty card (2 defends 2, 5 defends 5)
+                // No suit matching required during penalty defense
+                if (card.number === SPECIAL_NUMBERS.PICK_TWO && topCard.number === SPECIAL_NUMBERS.PICK_TWO) {
+                    return { valid: true }; // 2 defends Pick Two
                 }
-                return { valid: false, reason: "Must defend or draw" };
+                if (card.number === SPECIAL_NUMBERS.PICK_THREE && topCard.number === SPECIAL_NUMBERS.PICK_THREE) {
+                    return { valid: true }; // 5 defends Pick Three
+                }
+                return { valid: false, reason: "Must defend with matching card or draw" };
             }
 
             // ── Continuation state (both rules) ──
@@ -199,8 +203,11 @@ export const whotGameEngine = {
 
             // ── Called suit check ──
             if (matchState.calledSuit) {
+                // Whot (20) can ALWAYS be played, even under called suit
+                if (card.number === SPECIAL_NUMBERS.WHOT && ruleVersion === "rule1") {
+                    return { valid: true };
+                }
                 if (card.suit === matchState.calledSuit) return { valid: true };
-                // In Rule 1, Whot can always be played (handled above)
                 return { valid: false, reason: `Must match called suit: ${matchState.calledSuit}` };
             }
 
@@ -225,7 +232,8 @@ export const whotGameEngine = {
         const hand = newState.playerHands[playerId];
 
         newState.timerStart = Date.now();
-        newState.calledSuit = null;
+        // NOTE: calledSuit is NOT cleared here. It persists until a matching-suit card is played.
+        // See PLAY_CARD section below for clearing logic.
 
         if (move.moveId) {
             newState.lastMoveId = move.moveId;
@@ -268,6 +276,20 @@ export const whotGameEngine = {
             const cardIndex = hand.findIndex(c => c.id === move.cardId);
             const card = hand.splice(cardIndex, 1)[0];
             newState.discardPile.push(card);
+
+            // ── Clear calledSuit ONLY when a non-Whot card matching the called suit is played ──
+            // Whot (20) overrides calledSuit with a new one (handled in switch below)
+            if (card.number !== SPECIAL_NUMBERS.WHOT) {
+                if (newState.calledSuit && card.suit === newState.calledSuit) {
+                    newState.calledSuit = null; // Satisfied — clear it
+                } else if (!newState.calledSuit) {
+                    // No called suit — nothing to clear
+                } else {
+                    // Card doesn't match calledSuit but passed validation — clear anyway
+                    // (e.g. penalty defense cards that bypass suit check)
+                    newState.calledSuit = null;
+                }
+            }
 
             let nextTurnPlayer = opponentId;
 
