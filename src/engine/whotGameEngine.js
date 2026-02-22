@@ -263,7 +263,7 @@ export const whotGameEngine = {
                     whotGameEngine.reshufflePile(newState);
                 }
                 if (newState.market.length > 0) {
-                    hand.push(newState.market.pop());
+                    hand.unshift(newState.market.pop());
                 }
             }
 
@@ -359,7 +359,7 @@ export const whotGameEngine = {
                         // Same in both rules: opponent draws 1 immediately, player enters continuation
                         const oppHand = newState.playerHands[opponentId];
                         if (newState.market.length === 0) whotGameEngine.reshufflePile(newState);
-                        if (newState.market.length > 0) oppHand.push(newState.market.pop());
+                        if (newState.market.length > 0) oppHand.unshift(newState.market.pop());
                         newState.pendingPenalty = null;
                         newState.continuationState = { playerId, active: true };
                         nextTurnPlayer = playerId; // Player stays in turn
@@ -388,7 +388,7 @@ export const whotGameEngine = {
                         const oppHandR2 = newState.playerHands[opponentId];
                         for (let i = 0; i < drawCount; i++) {
                             if (newState.market.length === 0) whotGameEngine.reshufflePile(newState);
-                            if (newState.market.length > 0) oppHandR2.push(newState.market.pop());
+                            if (newState.market.length > 0) oppHandR2.unshift(newState.market.pop());
                         }
                         newState.pendingPenalty = null;
                         newState.continuationState = { playerId, active: true };
@@ -399,7 +399,7 @@ export const whotGameEngine = {
                     case SPECIAL_NUMBERS.GENERAL_MARKET: {
                         const oppHandGM = newState.playerHands[opponentId];
                         if (newState.market.length === 0) whotGameEngine.reshufflePile(newState);
-                        if (newState.market.length > 0) oppHandGM.push(newState.market.pop());
+                        if (newState.market.length > 0) oppHandGM.unshift(newState.market.pop());
                         newState.pendingPenalty = null;
                         newState.continuationState = { playerId, active: true };
                         nextTurnPlayer = playerId;
