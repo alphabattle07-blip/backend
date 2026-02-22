@@ -167,16 +167,16 @@ export const whotGameEngine = {
             const card = hand.find(c => c.id === move.cardId);
             if (!card) return { valid: false, reason: "Card not in hand" };
 
-            // ── Under attack (pendingPenalty targeting this player) ──
+            // ══════════════════════════════════════════════════════
+            // PENALTY DEFENSE — checked FIRST, before any normal validation
+            // ══════════════════════════════════════════════════════
             if (matchState.pendingPenalty && matchState.pendingPenalty.type === 'draw' && matchState.pendingPenalty.targetId === playerId) {
-                // Defense: must play the SAME NUMBER as the penalty card (2 defends 2, 5 defends 5)
-                // No suit matching required during penalty defense
-                if (card.number === SPECIAL_NUMBERS.PICK_TWO && topCard.number === SPECIAL_NUMBERS.PICK_TWO) {
-                    return { valid: true }; // 2 defends Pick Two
+                // Defense: card number must match the penalty's cardNumber (2 defends 2, 5 defends 5)
+                // NO suit matching — number only
+                if (card.number === matchState.pendingPenalty.cardNumber) {
+                    return { valid: true };
                 }
-                if (card.number === SPECIAL_NUMBERS.PICK_THREE && topCard.number === SPECIAL_NUMBERS.PICK_THREE) {
-                    return { valid: true }; // 5 defends Pick Three
-                }
+                // Everything else is REJECTED — must defend or draw
                 return { valid: false, reason: "Must defend with matching card or draw" };
             }
 
@@ -314,12 +314,22 @@ export const whotGameEngine = {
                         break;
 
                     case SPECIAL_NUMBERS.PICK_TWO: // 2
-                        newState.pendingPenalty = { type: 'draw', count: getNewPenaltyCount(2), targetId: opponentId };
+                        newState.pendingPenalty = {
+                            type: 'draw',
+                            count: getNewPenaltyCount(2),
+                            cardNumber: 2, // Track which card created the penalty
+                            targetId: opponentId
+                        };
                         nextTurnPlayer = opponentId; // Turn passes, opponent must defend or draw
                         break;
 
                     case SPECIAL_NUMBERS.PICK_THREE: // 5
-                        newState.pendingPenalty = { type: 'draw', count: getNewPenaltyCount(3), targetId: opponentId };
+                        newState.pendingPenalty = {
+                            type: 'draw',
+                            count: getNewPenaltyCount(3),
+                            cardNumber: 5, // Track which card created the penalty
+                            targetId: opponentId
+                        };
                         nextTurnPlayer = opponentId; // Turn passes, opponent must defend or draw
                         break;
 
@@ -354,7 +364,12 @@ export const whotGameEngine = {
                         // If player was under attack (pendingPenalty targeting them), this is a counter-attack
                         if (matchState.pendingPenalty && matchState.pendingPenalty.type === 'draw' && matchState.pendingPenalty.targetId === playerId) {
                             // Counter: redirect stacked penalty to opponent
-                            newState.pendingPenalty = { type: 'draw', count: getNewPenaltyCount(2), targetId: opponentId };
+                            newState.pendingPenalty = {
+                                type: 'draw',
+                                count: getNewPenaltyCount(2),
+                                cardNumber: 2,
+                                targetId: opponentId
+                            };
                             nextTurnPlayer = opponentId;
                         } else {
                             // Aggressive play: opponent draws 2 immediately, player enters continuation
