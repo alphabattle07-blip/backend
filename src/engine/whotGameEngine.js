@@ -171,12 +171,19 @@ export const whotGameEngine = {
             // PENALTY DEFENSE — checked FIRST, before any normal validation
             // ══════════════════════════════════════════════════════
             if (matchState.pendingPenalty && matchState.pendingPenalty.type === 'draw' && matchState.pendingPenalty.targetId === playerId) {
+                // Determine the defense number: use stored cardNumber, or fall back to topCard.number
+                const defenseNumber = matchState.pendingPenalty.cardNumber || topCard.number;
+
+                console.log(`[Engine] PENALTY DEFENSE CHECK: card.number=${card.number}, defenseNumber=${defenseNumber}, pendingPenalty=`, JSON.stringify(matchState.pendingPenalty));
+
                 // Defense: card number must match the penalty's cardNumber (2 defends 2, 5 defends 5)
                 // NO suit matching — number only
-                if (card.number === matchState.pendingPenalty.cardNumber) {
+                if (card.number === defenseNumber) {
+                    console.log(`[Engine] DEFENSE ACCEPTED: ${card.number} matches ${defenseNumber}`);
                     return { valid: true };
                 }
                 // Everything else is REJECTED — must defend or draw
+                console.log(`[Engine] DEFENSE REJECTED: ${card.number} does not match ${defenseNumber}`);
                 return { valid: false, reason: "Must defend with matching card or draw" };
             }
 
@@ -481,9 +488,12 @@ export const whotGameEngine = {
         const currentPlayerIndex = matchState.turnPlayer === playerId ? 0 : 1;
 
         const pendingPick = matchState.pendingPenalty?.type === 'draw' ? matchState.pendingPenalty.count : 0;
+        // Map server's 'draw' penalty type to client's 'defend' action type
+        // Client rules.ts checks for type === 'defend' to allow defense plays
         const pendingAction = matchState.pendingPenalty ? {
-            type: matchState.pendingPenalty.type,
+            type: 'defend', // Client expects 'defend', not 'draw'
             count: matchState.pendingPenalty.count,
+            cardNumber: matchState.pendingPenalty.cardNumber || null,
             playerIndex: matchState.pendingPenalty.targetId === playerId ? 0 : 1
         } : null;
 
