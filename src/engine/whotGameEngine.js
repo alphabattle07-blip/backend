@@ -546,12 +546,12 @@ export const whotGameEngine = {
         const hand = matchState.playerHands[turnPlayer] || [];
         const topCard = matchState.discardPile[matchState.discardPile.length - 1];
 
+        // 1. Increment Timeout Count
+        matchState.timeoutCount[turnPlayer] = (matchState.timeoutCount[turnPlayer] || 0) + 1;
+
         // 2. If there's a pending penalty targeting this player, auto-draw
         if (matchState.pendingPenalty && matchState.pendingPenalty.targetId === turnPlayer) {
-            return {
-                state: whotGameEngine.applyMove(matchState, turnPlayer, { type: 'DRAW' }),
-                move: { type: 'PICK_CARD' }
-            };
+            return whotGameEngine.applyMove(matchState, turnPlayer, { type: 'DRAW' });
         }
 
         // 3. Continuation: if in continuation, try to play a valid card or draw to end
@@ -566,17 +566,11 @@ export const whotGameEngine = {
                 // Prefer non-special
                 const nonSpecial = validCards.filter(c => !RULE2_SPECIALS.has(c.number));
                 const cardToPlay = nonSpecial.length > 0 ? nonSpecial[0] : validCards[0];
-                return {
-                    state: whotGameEngine.applyMove(matchState, turnPlayer, { type: 'PLAY_CARD', cardId: cardToPlay.id }),
-                    move: { type: 'CARD_PLAYED', cardId: cardToPlay.id, card: cardToPlay }
-                };
+                return whotGameEngine.applyMove(matchState, turnPlayer, { type: 'PLAY_CARD', cardId: cardToPlay.id });
             }
 
             // No valid card — draw to end continuation
-            return {
-                state: whotGameEngine.applyMove(matchState, turnPlayer, { type: 'DRAW' }),
-                move: { type: 'PICK_CARD' }
-            };
+            return whotGameEngine.applyMove(matchState, turnPlayer, { type: 'DRAW' });
         }
 
         // 4. Standard auto-play: find valid cards
@@ -613,16 +607,10 @@ export const whotGameEngine = {
                 hand.forEach(c => { if (c.suit !== 'whot') suits[c.suit] = (suits[c.suit] || 0) + 1; });
                 move.calledSuit = Object.keys(suits).reduce((a, b) => suits[a] > suits[b] ? a : b, 'circle');
             }
-            return {
-                state: whotGameEngine.applyMove(matchState, turnPlayer, move),
-                move: { type: 'CARD_PLAYED', cardId: cardToPlay.id, card: cardToPlay, suitChoice: move.calledSuit }
-            };
+            return whotGameEngine.applyMove(matchState, turnPlayer, move);
         }
 
         // No valid card — draw
-        return {
-            state: whotGameEngine.applyMove(matchState, turnPlayer, { type: 'DRAW' }),
-            move: { type: 'PICK_CARD' }
-        };
+        return whotGameEngine.applyMove(matchState, turnPlayer, { type: 'DRAW' });
     }
 };
