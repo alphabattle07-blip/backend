@@ -307,7 +307,7 @@ export const whotGameLoop = {
         entry.lock = entry.lock.then(async () => {
             entry.isLocked = true;
             try {
-                const state = entry.state;
+                let state = entry.state;
 
                 // Make sure the state matches the intended player to avoid race condition timeouts
                 if (state.turnPlayer !== playerId || state.status === 'COMPLETED') return;
@@ -315,63 +315,62 @@ export const whotGameLoop = {
                 // Calculate timeout limits based on tier
                 const maxTimeouts = state.rankType === 'warrior' ? 3 : 5;
 
-                // 1. Authoritative Auto-Play via Engine
-                // IMPORTANT: In the new implementation handleTurnTimeout edits state IN-PLACE and returns nextState.
-                // It increments the counter internally.
-                const nextState = whotGameEngine.handleTurnTimeout(state);
+                // 1. Increment timeout ONLY ONCE (before any auto-play execution)
+                state.timeoutCount[playerId] = (state.timeoutCount[playerId] || 0) + 1;
+
+                // 2. Resolution Loop for chained effects
+                let safetyCounter = 0;
+                const MAX_CHAIN = 20;
+
+                while (!state.gameCompleted && state.turnPlayer === playerId && state.status !== 'COMPLETED') {
+                    const result = whotGameEngine.handleTurnTimeout(state);
+
+                    if (!result || !result.state) break;
+
+                    state = result.state;
+                    entry.state = state;
+
+                    // broadcast auto move immediately for each step in the chain
+                    broadcastOpponentMove(gameId, playerId, {
+                        ...result.move,
+                        timestamp: Date.now()
+                    });
+
+                    // safety guard
+                    if (++safetyCounter > MAX_CHAIN) {
+                        console.error("[WhotLoop] Auto-play chain exceeded safe limit");
+                        break;
+                    }
+                }
 
                 // EXPLICIT REQUIREMENT 2: Time execution must reset timer safely inside atomic lock.
-                nextState.turnStartTime = Date.now();
-                nextState.warningYellowAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 7000 : 10000);
-                nextState.warningRedAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 14000 : 20000);
+                state.turnStartTime = Date.now();
+                state.warningYellowAt = state.turnStartTime + (state.rankType === 'warrior' ? 7000 : 10000);
+                state.warningRedAt = state.turnStartTime + (state.rankType === 'warrior' ? 14000 : 20000);
 
                 // Update Memory + Redis
-                entry.state = nextState;
-                const minimalState = { ...nextState };
+                entry.state = state;
+                const minimalState = { ...state };
                 delete minimalState.processedMoves;
                 await redis.set(`match:${gameId}`, JSON.stringify(minimalState));
 
                 // Success Broadcast (for Auto-Play)
                 broadcastGameState(gameId, 'moveConfirmed', { moveId: 'auto', playerId });
 
-                // 🎯 BROADCAST OPPONENT MOVE so animations trigger on both screens
-                // Determine what the engine auto-played by comparing discard piles
-                const oldPileLen = state.discardPile.length;
-                const newPileLen = nextState.discardPile.length;
+                broadcastScrubbedState(gameId, state);
 
-                if (newPileLen > oldPileLen) {
-                    // A card was played
-                    const playedCard = nextState.discardPile[newPileLen - 1];
-                    const movePayload = {
-                        type: 'CARD_PLAYED',
-                        cardId: playedCard.id,
-                        suitChoice: playedCard.number === 20 ? 'circle' : undefined,
-                        timestamp: Date.now()
-                    };
-                    broadcastOpponentMove(gameId, playerId, movePayload);
-                } else {
-                    // A card was drawn
-                    const movePayload = {
-                        type: 'PICK_CARD',
-                        timestamp: Date.now()
-                    };
-                    broadcastOpponentMove(gameId, playerId, movePayload);
-                }
-
-                broadcastScrubbedState(gameId, nextState);
-
-                // 2. Check Forfeit
-                // The counter is bumped inside handleTurnTimeout
-                if (nextState.timeoutCount[playerId] >= maxTimeouts) {
+                // Check Forfeit
+                // The counter is checked here after the loop
+                if (state.timeoutCount[playerId] >= maxTimeouts) {
                     await whotGameLoop.handleForfeit(gameId, playerId);
                     return;
                 }
 
                 // If game ended
-                if (nextState.status === 'COMPLETED') {
-                    await whotGameLoop.handleWin(gameId, nextState.winnerId, nextState);
+                if (state.status === 'COMPLETED') {
+                    await whotGameLoop.handleWin(gameId, state.winnerId, state);
                 } else {
-                    whotGameLoop.startTurnTimer(gameId, nextState.turnPlayer);
+                    whotGameLoop.startTurnTimer(gameId, state.turnPlayer);
                 }
             } catch (err) {
                 console.error(`[WhotLoop] Timeout error: ${err.message}`);
