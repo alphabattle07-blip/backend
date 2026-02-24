@@ -1,6 +1,7 @@
 
 import { broadcastGameState } from '../socket/socketManager.js';
 import { PrismaClient } from '../generated/prisma/index.js';
+import { ludoGameEngine } from './ludoGameEngine.js';
 
 const prisma = new PrismaClient();
 
@@ -283,5 +284,97 @@ export const ludoGameLoop = {
         });
 
         ludoGameLoop.clearTurnTimer(gameId);
+    },
+
+    /**
+     * Executes a player action (intent) securely on the server
+     */
+    executeAction: async (gameId, userId, action) => {
+        const game = await prisma.game.findUnique({ where: { id: gameId } });
+        if (!game || game.status !== 'IN_PROGRESS') {
+            throw new Error("Game is not in progress");
+        }
+
+        let board = game.board;
+        if (typeof board === 'string') board = JSON.parse(board);
+
+        // Map database userId to 'p1' or 'p2' logically
+        const isPlayer1 = game.player1Id === userId;
+        const logicalPlayerId = isPlayer1 ? 'p1' : 'p2';
+
+        // 1. Validate Turn
+        const currentPlayerIndex = board.currentPlayerIndex;
+        if (board.players[currentPlayerIndex].id !== logicalPlayerId) {
+            throw new Error("Not your turn");
+        }
+
+        const stateBefore = JSON.stringify(board);
+        let updatedBoard = { ...board };
+
+        // 2. Process Intent
+        if (action.type === 'ROLL_DICE') {
+            if (!updatedBoard.waitingForRoll) {
+                throw new Error("Not waiting for roll");
+            }
+            updatedBoard = ludoGameEngine.rollDice(updatedBoard);
+
+        } else if (action.type === 'MOVE_PIECE') {
+            if (updatedBoard.waitingForRoll) {
+                throw new Error("Must roll dice first");
+            }
+
+            // In a perfect authoritative engine, the server generates valid moves and
+            // compares the user's intent against them.
+            const validMoves = ludoGameEngine.getValidMoves(updatedBoard);
+            const moveIntent = action.move;
+
+            // Find a matching valid move
+            const isValid = validMoves.some(m =>
+                m.seedIndex === moveIntent.seedIndex &&
+                m.targetPos === moveIntent.targetPos &&
+                JSON.stringify(m.diceIndices) === JSON.stringify(moveIntent.diceIndices)
+            );
+
+            if (!isValid) {
+                console.log("[LudoEngine] Invalid move intent rejected:", moveIntent);
+                throw new Error("Invalid move");
+            }
+
+            updatedBoard = ludoGameEngine.applyMove(updatedBoard, moveIntent);
+        } else {
+            throw new Error("Unknown action type");
+        }
+
+        // 3. Check if State Changed. If yes, save and broadcast.
+        if (stateBefore !== JSON.stringify(updatedBoard)) {
+            // If winner detected
+            let status = 'IN_PROGRESS';
+            let winnerId = null;
+
+            if (updatedBoard.winner) {
+                status = 'COMPLETED';
+                winnerId = updatedBoard.winner === 'p1' ? game.player1Id : game.player2Id;
+                ludoGameLoop.clearTurnTimer(gameId);
+            }
+
+            await prisma.game.update({
+                where: { id: gameId },
+                data: {
+                    board: updatedBoard,
+                    status: status,
+                    winnerId: winnerId,
+                    ...(status === 'COMPLETED' ? { endedAt: new Date() } : {})
+                }
+            });
+
+            // Broadcast updated board to everyone
+            broadcastGameState(gameId, 'gameStateUpdate', updatedBoard);
+
+            // If game still progressing and turn changed, restart timer
+            if (status === 'IN_PROGRESS' && board.currentPlayerIndex !== updatedBoard.currentPlayerIndex) {
+                const nextTurnUserId = updatedBoard.currentPlayerIndex === 0 ? game.player1Id : game.player2Id;
+                ludoGameLoop.startTurnTimer(gameId, nextTurnUserId);
+            }
+        }
     }
 };
