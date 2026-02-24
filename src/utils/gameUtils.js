@@ -1,3 +1,5 @@
+import { prisma } from './prisma.js';
+
 const SUIT_CARDS = {
     circle: [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14],
     triangle: [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14],
@@ -113,4 +115,68 @@ export const initializeGameData = (gameType, player1, player2) => {
     }
 
     return updateData;
+};
+
+/**
+ * Authoritative reward processing for online matches.
+ * Rules:
+ * - Both players get +25 Battle Bonus.
+ * - Winner gets +50 Win Reward.
+ * - Loser gets -50 Loss Penalty.
+ * Calculation:
+ * - Winner Total: +75 R-Coins & Rating.
+ * - Loser Total: -25 R-Coins & Rating.
+ */
+export const processMatchRewards = async (winnerId, loserId, gameId, gameType) => {
+    if (!winnerId || !loserId) return;
+
+    try {
+        await prisma.$transaction([
+            // Winner Updates
+            prisma.user.update({
+                where: { id: winnerId },
+                data: {
+                    battleBonus: { increment: 75 },
+                    rating: { increment: 75 }
+                }
+            }),
+            prisma.gameStats.upsert({
+                where: { userId_gameId: { userId: winnerId, gameId: gameType } },
+                update: {
+                    wins: { increment: 1 },
+                    rating: { increment: 75 }
+                },
+                create: {
+                    userId: winnerId,
+                    gameId: gameType,
+                    wins: 1,
+                    rating: 1075
+                }
+            }),
+            // Loser Updates
+            prisma.user.update({
+                where: { id: loserId },
+                data: {
+                    battleBonus: { increment: -25 },
+                    rating: { increment: -25 }
+                }
+            }),
+            prisma.gameStats.upsert({
+                where: { userId_gameId: { userId: loserId, gameId: gameType } },
+                update: {
+                    losses: { increment: 1 },
+                    rating: { increment: -25 }
+                },
+                create: {
+                    userId: loserId,
+                    gameId: gameType,
+                    losses: 1,
+                    rating: 975
+                }
+            })
+        ]);
+        console.log(`[Rewards] Processed rewards for game ${gameId} (${gameType}). Winner: ${winnerId}, Loser: ${loserId}`);
+    } catch (err) {
+        console.error(`[Rewards] Error processing rewards for game ${gameId}:`, err);
+    }
 };

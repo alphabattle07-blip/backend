@@ -2,6 +2,7 @@
 import { broadcastGameState } from '../socket/socketManager.js';
 import { PrismaClient } from '../generated/prisma/index.js';
 import { ludoGameEngine } from './ludoGameEngine.js';
+import { processMatchRewards } from '../utils/gameUtils.js';
 
 const prisma = new PrismaClient();
 
@@ -147,6 +148,9 @@ export const ludoGameLoop = {
         const winnerId = losingLogicalId === 'p1' ? game.player2Id : game.player1Id;
         const loserId = losingLogicalId === 'p1' ? game.player1Id : game.player2Id;
 
+        // --- PROCESS REWARDS ---
+        await processMatchRewards(winnerId, loserId, gameId, 'ludo');
+
         await prisma.game.update({
             where: { id: gameId },
             data: {
@@ -198,6 +202,30 @@ export const ludoGameLoop = {
                 // Update state
                 if (action.moveId) updatedBoard.players[isPlayer1 ? 0 : 1].lastProcessedMoveId = action.moveId;
                 updatedBoard.stateVersion = (updatedBoard.stateVersion || 0) + 1;
+
+                // --- CHECK FOR WINNER ---
+                const game = await prisma.game.findUnique({ where: { id: gameId } });
+                if (updatedBoard.winner && game) {
+                    const winnerLogicalId = updatedBoard.winner.id; // 'p1' or 'p2'
+                    const winnerId = winnerLogicalId === 'p1' ? game.player1Id : game.player2Id;
+                    const loserId = winnerLogicalId === 'p1' ? game.player2Id : game.player1Id;
+
+                    await processMatchRewards(winnerId, loserId, gameId, 'ludo');
+
+                    await prisma.game.update({
+                        where: { id: gameId },
+                        data: {
+                            status: 'COMPLETED',
+                            winnerId: winnerId,
+                            endedAt: new Date(),
+                            board: updatedBoard
+                        }
+                    });
+
+                    broadcastGameState(gameId, 'gameEnded', { winnerId });
+                    activeLudoGames.delete(gameId);
+                    return;
+                }
 
                 entry.state = updatedBoard;
                 await prisma.game.update({

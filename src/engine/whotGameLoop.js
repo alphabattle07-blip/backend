@@ -2,6 +2,7 @@ import redis from '../utils/redis.js';
 import { broadcastGameState, broadcastScrubbedState, broadcastOpponentMove } from '../socket/socketManager.js';
 import { PrismaClient } from '../generated/prisma/index.js';
 import { whotGameEngine } from './whotGameEngine.js';
+import { processMatchRewards } from '../utils/gameUtils.js';
 
 const prisma = new PrismaClient();
 
@@ -382,6 +383,13 @@ export const whotGameLoop = {
     },
 
     handleWin: async (gameId, winnerId, board) => {
+        // --- PROCESS REWARDS ---
+        const game = await prisma.game.findUnique({ where: { id: gameId } });
+        if (game && winnerId) {
+            const loserId = game.player1Id === winnerId ? game.player2Id : game.player1Id;
+            await processMatchRewards(winnerId, loserId, gameId, 'whot');
+        }
+
         await prisma.game.update({
             where: { id: gameId },
             data: {
@@ -402,7 +410,18 @@ export const whotGameLoop = {
 
         const entry = activeWhotGames.get(gameId);
         const state = entry ? entry.state : null;
-        const winnerId = state ? state.players.find(id => id !== losingPlayerId) : null;
+        let winnerId = state ? state.players.find(id => id !== losingPlayerId) : null;
+
+        // Fallback for winner detection
+        const game = await prisma.game.findUnique({ where: { id: gameId } });
+        if (!winnerId && game) {
+            winnerId = game.player1Id === losingPlayerId ? game.player2Id : game.player1Id;
+        }
+
+        // --- PROCESS REWARDS ---
+        if (winnerId && game) {
+            await processMatchRewards(winnerId, losingPlayerId, gameId, 'whot');
+        }
 
         await prisma.game.update({
             where: { id: gameId },
