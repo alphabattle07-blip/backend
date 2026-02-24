@@ -341,6 +341,18 @@ export const ludoGameLoop = {
             }
 
             updatedBoard = ludoGameEngine.applyMove(updatedBoard, moveIntent);
+        } else if (action.type === 'PASS_TURN') {
+            if (updatedBoard.waitingForRoll) {
+                throw new Error("Cannot pass before rolling");
+            }
+
+            const validMoves = ludoGameEngine.getValidMoves(updatedBoard);
+            if (validMoves.length > 0) {
+                console.log(`[LudoEngine] Invalid pass intent rejected. Valid moves exist:`, validMoves.length);
+                throw new Error("Cannot pass when valid moves exist");
+            }
+
+            updatedBoard = ludoGameEngine.passTurn(updatedBoard);
         } else {
             throw new Error("Unknown action type");
         }
