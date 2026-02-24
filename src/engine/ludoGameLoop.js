@@ -13,35 +13,6 @@ const RANK_THRESHOLDS = {
     WARRIOR: 1750
 };
 
-const TIME_LIMITS = {
-    CASUAL: {
-        TOTAL: 50000,
-        ROLL: 20000, // 0-20s Auto-roll
-        WARNING: 20000, // Yellow at 20s elapsed
-        DANGER: 40000,  // Red at 40s elapsed
-    },
-    COMPETITIVE: { // Warrior and above
-        TOTAL: 30000,
-        ROLL: 15000, // 0-15s Auto-roll
-        WARNING: 15000, // Yellow at 15s elapsed
-        DANGER: 25000,  // Red at 25s elapsed
-    }
-};
-
-const MAX_TIMEOUTS = {
-    CASUAL: 5,
-    COMPETITIVE: 3
-};
-
-// Helper to get time limits based on player rating
-const getTimeLimits = (rating) => {
-    return rating >= RANK_THRESHOLDS.WARRIOR ? TIME_LIMITS.COMPETITIVE : TIME_LIMITS.CASUAL;
-};
-
-const getMaxTimeouts = (rating) => {
-    return rating >= RANK_THRESHOLDS.WARRIOR ? MAX_TIMEOUTS.COMPETITIVE : MAX_TIMEOUTS.CASUAL;
-};
-
 export const ludoGameLoop = {
     /**
      * Start or reset the turn timer for a game
@@ -158,110 +129,77 @@ export const ludoGameLoop = {
         }
     },
 
-    handleAutoRoll: async (gameId, playerId) => {
-        console.log(`[LudoEngine] Auto-rolling for ${playerId} in game ${gameId}`);
-        // Logic to simulate a dice roll and update DB
-        // Fetch current state
-        const game = await prisma.game.findUnique({ where: { id: gameId } });
-        if (!game) return;
+    handleAutoRoll: async (gameId, board) => {
+        console.log(`[LudoLoop] Auto-rolling for game ${gameId}`);
 
-        let board = game.board;
-        if (typeof board === 'string') board = JSON.parse(board);
+        let updatedBoard = ludoGameEngine.rollDice(board);
+        updatedBoard.stateVersion = (updatedBoard.stateVersion || 0) + 1;
 
-        // Only auto-roll if still waiting for roll
-        if (!board.waitingForRoll) return;
-
-        // Perform Roll (Random 1-6)
-        const diceValue = Math.floor(Math.random() * 6) + 1;
-
-        // Update Board State
-        board.dice = [diceValue];
-        board.waitingForRoll = false;
-        board.stateVersion = (board.stateVersion || 0) + 1;
-        // Note: Logic might need to check if valid moves exist. 
-        // If 6, they might get another roll? Simplified for now.
-
-        // Save to DB
         await prisma.game.update({
             where: { id: gameId },
-            data: { board: board }
+            data: { board: updatedBoard }
         });
 
-        // Broadcast update
-        broadcastGameState(gameId, 'gameStateUpdate', { board });
-
-        // Important: The main turn timer continues! We don't reset it.
-        // But we should visually indicate the roll happened.
+        broadcastGameState(gameId, 'gameStateUpdate', updatedBoard);
     },
 
-    handleTurnTimeout: async (gameId, playerId) => {
-        console.log(`[LudoEngine] Turn timeout for ${playerId} in game ${gameId}`);
+    handleAutoPlay: async (gameRecord, board, forfeitLimit) => {
+        const gameId = gameRecord.id;
+        const logicalPlayerId = board.players[board.currentPlayerIndex].id;
+        const realPlayerId = logicalPlayerId === 'p1' ? gameRecord.player1Id : gameRecord.player2Id;
 
-        // 1. Increment Timeout Count
-        // We need a place to store timeout counts. 
-        // board.players[index].timeouts ??
+        console.log(`[LudoLoop] Auto-playing for player ${logicalPlayerId} in game ${gameId}`);
 
-        const game = await prisma.game.findUnique({ where: { id: gameId } });
-        if (!game) return;
+        // 1. Increment Auto-Play Count
+        if (!board.autoPlayCountByPlayer) board.autoPlayCountByPlayer = { p1: 0, p2: 0 };
+        board.autoPlayCountByPlayer[logicalPlayerId]++;
 
-        let board = game.board;
-        if (typeof board === 'string') board = JSON.parse(board);
-
-        const playerIndex = board.players.findIndex(p => p.id === (playerId === game.player1Id ? 'p1' : 'p2'));
-        if (playerIndex === -1) return;
-
-        if (!board.players[playerIndex].timeouts) board.players[playerIndex].timeouts = 0;
-        board.players[playerIndex].timeouts += 1;
-
-        const currentTimeouts = board.players[playerIndex].timeouts;
-        const state = activeGames.get(gameId);
-        const maxTimeouts = state?.maxTimeouts || 5;
-
-        // 2. Check Forfeit Condition
-        if (currentTimeouts >= maxTimeouts) {
-            await ludoGameLoop.handleForfeit(gameId, playerId);
+        // 2. Check Forfeit
+        if (board.autoPlayCountByPlayer[logicalPlayerId] >= forfeitLimit) {
+            await ludoGameLoop.handleForfeit(gameId, realPlayerId);
             return;
         }
 
-        // 2b. Warning on 4th timeout (for Casual)
-        if (maxTimeouts === 5 && currentTimeouts === 4) {
-            broadcastGameState(gameId, 'gameTimeoutWarning', {
-                playerId,
-                timeouts: currentTimeouts,
-                message: "WARNING: One more timeout and you will forfeit the match!"
-            });
+        // 3. Perform Safe Move (Pure Engine)
+        // If dice haven't been rolled (should be true if handleAutoRoll was skipped or failed), roll first
+        let currentBoard = { ...board };
+        if (!currentBoard.diceRolled) {
+            currentBoard = ludoGameEngine.rollDice(currentBoard);
         }
 
-        // 3. Play Safe/Random Move
-        // Logic to find a valid piece to move.
-        await ludoGameLoop.playSafeMove(gameId, playerId, board);
-    },
+        const validMoves = ludoGameEngine.getValidMoves(currentBoard);
+        let finalBoard;
 
-    playSafeMove: async (gameId, playerId, board) => {
-        // Implement logic to find the "best" or "first available" move
-        // For now, just pick the first valid piece that can move with the current dice.
+        if (validMoves.length > 0) {
+            // Pick first valid move
+            finalBoard = ludoGameEngine.applyMove(currentBoard, validMoves[0]);
+        } else {
+            // No moves possible, pass turn
+            finalBoard = ludoGameEngine.passTurn(currentBoard);
+        }
 
-        // Simplified: Switch turn
-        board.currentPlayerIndex = board.currentPlayerIndex === 0 ? 1 : 0;
-        board.waitingForRoll = true;
-        board.dice = [];
-        board.stateVersion = (board.stateVersion || 0) + 1;
+        finalBoard.stateVersion = (finalBoard.stateVersion || 0) + 1;
 
-        // Save
+        // 4. Persistence & Turn Transition
+        const turnChanged = board.currentPlayerIndex !== finalBoard.currentPlayerIndex;
+        const nextPlayerId = finalBoard.currentPlayerIndex === 0 ? gameRecord.player1Id : gameRecord.player2Id;
+
         await prisma.game.update({
             where: { id: gameId },
             data: {
-                board: board,
-                currentTurn: board.currentPlayerIndex === 0 ? board.players[0].id : board.players[1].id // This might need mapping back to real user IDs
+                board: finalBoard,
+                status: finalBoard.winner ? 'COMPLETED' : 'IN_PROGRESS',
+                winnerId: finalBoard.winner ? (finalBoard.winner === 'p1' ? gameRecord.player1Id : gameRecord.player2Id) : null
             }
         });
 
-        broadcastGameState(gameId, 'gameStateUpdate', { board });
+        broadcastGameState(gameId, 'gameStateUpdate', finalBoard);
 
-        // Trigger next turn timer
-        // We need the ID of the next player. 
-        // WARNING: Using 'p1'/'p2' vs real UUIDs is tricky.
-        // Assuming we can resolve the next player ID.
+        if (turnChanged && !finalBoard.winner) {
+            await ludoGameLoop.startTurn(gameId, nextPlayerId);
+        } else if (finalBoard.winner) {
+            activeGames.delete(gameId);
+        }
     },
 
     handleForfeit: async (gameId, losingPlayerId) => {
@@ -402,7 +340,7 @@ export const ludoGameLoop = {
             // If game still progressing and turn changed, restart timer
             if (status === 'IN_PROGRESS' && board.currentPlayerIndex !== updatedBoard.currentPlayerIndex) {
                 const nextTurnUserId = updatedBoard.currentPlayerIndex === 0 ? game.player1Id : game.player2Id;
-                ludoGameLoop.startTurnTimer(gameId, nextTurnUserId);
+                await ludoGameLoop.startTurn(gameId, nextTurnUserId);
             }
         }
     }

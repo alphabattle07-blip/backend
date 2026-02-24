@@ -5,6 +5,7 @@ const HOUSE_POS = -1;
 const FINISH_POS = 56;
 
 export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2) => {
+    const isWarrior = level >= 3;
     return {
         players: [
             {
@@ -28,6 +29,13 @@ export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2) =
         log: ['Game Started'],
         level: level,
         stateVersion: 0,
+        // Timer Extensions
+        turnStartTime: 0,
+        turnDuration: isWarrior ? 25 : 19,
+        autoPlayCountByPlayer: { p1: 0, p2: 0 },
+        ruleMode: isWarrior ? 'WARRIOR' : 'STANDARD',
+        diceRolled: false,
+        currentPhase: 'WAITING_FOR_ROLL'
     };
 };
 
@@ -45,6 +53,8 @@ export const rollDice = (state) => {
         dice,
         diceUsed,
         waitingForRoll: false,
+        diceRolled: true,
+        currentPhase: 'WAITING_FOR_MOVE',
         log: [...(state.log || []), `Rolled [${dice.join(', ')}]`],
     };
 };
@@ -276,6 +286,8 @@ export const applyMove = (state, move) => {
         currentPlayerIndex: nextTurn,
         diceUsed: resetDice,
         waitingForRoll: waiting,
+        diceRolled: !waiting,
+        currentPhase: waiting ? 'WAITING_FOR_ROLL' : 'WAITING_FOR_MOVE',
         dice: waiting ? [] : state.dice,
         winner: winner,
         log: [...(state.log || []), `Moved seed`],
@@ -287,6 +299,8 @@ export const passTurn = (state) => {
         ...state,
         currentPlayerIndex: (state.currentPlayerIndex + 1) % 2,
         waitingForRoll: true,
+        diceRolled: false,
+        currentPhase: 'WAITING_FOR_ROLL',
         diceUsed: state.level >= 3 ? [false, false] : [false],
         dice: [],
         log: [...(state.log || []), `Turn passed`],
