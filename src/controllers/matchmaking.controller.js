@@ -2,6 +2,7 @@ import { PrismaClient } from '../generated/prisma/index.js';
 import { initializeGameData } from '../utils/gameUtils.js';
 import { whotGameLoop } from '../engine/whotGameLoop.js';
 import { whotGameEngine } from '../engine/whotGameEngine.js';
+import { ludoGameLoop } from '../engine/ludoGameLoop.js';
 
 const prisma = new PrismaClient();
 
@@ -133,9 +134,7 @@ export const startMatchmaking = async (req, res) => {
                 });
 
                 // --- LUDO TIMER START ---
-                import('../engine/ludoGameLoop.js').then(({ ludoGameLoop }) => {
-                    ludoGameLoop.startTurnTimer(game.id, game.player1Id);
-                }).catch(err => console.error('[Matchmaking] Failed to start Ludo timer:', err));
+                ludoGameLoop.startTurnTimer(game.id, game.player1Id);
             }
 
             return res.json({
@@ -315,9 +314,7 @@ export const checkMatchmakingStatus = async (req, res) => {
                 });
 
                 // --- LUDO TIMER START ---
-                import('../engine/ludoGameLoop.js').then(({ ludoGameLoop }) => {
-                    ludoGameLoop.startTurnTimer(game.id, game.player1Id);
-                }).catch(err => console.error('[Matchmaking] Failed to start Ludo timer:', err));
+                ludoGameLoop.startTurnTimer(game.id, game.player1Id);
             }
 
             return res.json({
