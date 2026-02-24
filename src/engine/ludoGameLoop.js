@@ -117,11 +117,11 @@ export const ludoGameLoop = {
 
         // 1. Auto-Roll Checkpoint
         // If they haven't rolled by limits.ROLL, we auto-roll for them.
-        if (isRollingPhase) {
-            turnState.rollTimeout = setTimeout(async () => {
-                await ludoGameLoop.handleAutoRoll(gameId, currentPlayerId);
-            }, limits.ROLL);
-        }
+        // if (isRollingPhase) {
+        //     turnState.rollTimeout = setTimeout(async () => {
+        //         await ludoGameLoop.handleAutoRoll(gameId, currentPlayerId);
+        //     }, limits.ROLL);
+        // }
 
         // 2. Warning Countdown
         // Starts at TOTAL - WARNING
@@ -142,9 +142,9 @@ export const ludoGameLoop = {
 
         // 3. Turn Expiration (Forfeit/Safe Move)
         // If they haven't finished their turn (moved) by TOTAL
-        turnState.turnTimeout = setTimeout(async () => {
-            await ludoGameLoop.handleTurnTimeout(gameId, currentPlayerId);
-        }, limits.TOTAL);
+        // turnState.turnTimeout = setTimeout(async () => {
+        //     await ludoGameLoop.handleTurnTimeout(gameId, currentPlayerId);
+        // }, limits.TOTAL);
     },
 
     clearTurnTimer: (gameId) => {
