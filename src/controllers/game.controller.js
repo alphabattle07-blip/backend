@@ -106,7 +106,9 @@ export const joinGame = async (req, res) => {
     });
 
     // START GAME TIMER
-    if (game.gameType === 'whot') {
+    if (game.gameType === 'ludo') {
+      ludoGameLoop.startTurnTimer(gameId, updatedGame.player1Id);
+    } else if (game.gameType === 'whot') {
       whotGameLoop.startTurnTimer(gameId, updatedGame.currentTurn);
     }
 
@@ -183,11 +185,6 @@ export const getGame = async (req, res) => {
       if (snapshot) {
         game.board = snapshot;
       }
-    } else if (game.gameType === 'ludo') {
-      const snapshot = await ludoGameLoop.getSnapshot(gameId);
-      if (snapshot) {
-        game.board = snapshot.board;
-      }
     }
 
     res.json({
@@ -233,14 +230,14 @@ export const updateGameState = async (req, res) => {
 
     const updateData = {};
     if (board !== undefined) {
-      if (game.gameType === 'whot' || game.gameType === 'ludo') {
-        return res.status(400).json({ success: false, message: 'Direct board updates not allowed. Use intent endpoints.' });
+      if (game.gameType === 'whot') {
+        return res.status(400).json({ success: false, message: 'Direct board updates not allowed for Whot. Use /move endpoint.' });
       }
       updateData.board = board;
     }
     if (currentTurn !== undefined) {
-      if (game.gameType === 'whot' || game.gameType === 'ludo') {
-        return res.status(400).json({ success: false, message: 'Direct turn updates not allowed.' });
+      if (game.gameType === 'whot') {
+        return res.status(400).json({ success: false, message: 'Direct turn updates not allowed for Whot.' });
       }
       updateData.currentTurn = currentTurn;
     }
@@ -250,7 +247,9 @@ export const updateGameState = async (req, res) => {
     if (status === 'COMPLETED') {
       updateData.endedAt = new Date();
       // Clear Timer
-      if (game.gameType === 'whot') {
+      if (game.gameType === 'ludo') {
+        ludoGameLoop.clearTurnTimer(gameId);
+      } else if (game.gameType === 'whot') {
         whotGameLoop.clearTurnTimer(gameId);
       }
     }
