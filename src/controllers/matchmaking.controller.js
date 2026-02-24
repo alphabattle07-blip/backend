@@ -131,6 +131,11 @@ export const startMatchmaking = async (req, res) => {
                         player2: { select: { id: true, name: true, rating: true } }
                     }
                 });
+
+                // --- LUDO TIMER START ---
+                import('../engine/ludoGameLoop.js').then(({ ludoGameLoop }) => {
+                    ludoGameLoop.startTurnTimer(game.id, game.player1Id);
+                }).catch(err => console.error('[Matchmaking] Failed to start Ludo timer:', err));
             }
 
             return res.json({
@@ -308,6 +313,11 @@ export const checkMatchmakingStatus = async (req, res) => {
                         player2: { select: { id: true, name: true, rating: true } }
                     }
                 });
+
+                // --- LUDO TIMER START ---
+                import('../engine/ludoGameLoop.js').then(({ ludoGameLoop }) => {
+                    ludoGameLoop.startTurnTimer(game.id, game.player1Id);
+                }).catch(err => console.error('[Matchmaking] Failed to start Ludo timer:', err));
             }
 
             return res.json({
