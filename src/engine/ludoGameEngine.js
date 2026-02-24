@@ -1,3 +1,4 @@
+import { randomInt } from 'crypto';
 import { LudoBoardData } from './ludoCoordinates.js';
 
 const HOUSE_POS = -1;
@@ -10,11 +11,13 @@ export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2) =
                 id: 'p1',
                 color: p1Color,
                 seeds: Array.from({ length: 4 }).map((_, i) => ({ id: `${p1Color}-${i}`, position: HOUSE_POS, landingPos: HOUSE_POS, animationDelay: 0 })),
+                lastProcessedMoveId: null,
             },
             {
                 id: 'p2',
                 color: p2Color,
                 seeds: Array.from({ length: 4 }).map((_, i) => ({ id: `${p2Color}-${i}`, position: HOUSE_POS, landingPos: HOUSE_POS, animationDelay: 0 })),
+                lastProcessedMoveId: null,
             },
         ],
         currentPlayerIndex: 0,
@@ -24,14 +27,15 @@ export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2) =
         winner: null,
         log: ['Game Started'],
         level: level,
+        stateVersion: 0,
     };
 };
 
 export const rollDice = (state) => {
     if (!state.waitingForRoll) return state;
 
-    const d1 = Math.floor(Math.random() * 6) + 1;
-    const d2 = Math.floor(Math.random() * 6) + 1;
+    const d1 = randomInt(1, 7);
+    const d2 = randomInt(1, 7);
 
     const dice = state.level >= 3 ? [d1, d2] : [d1];
     const diceUsed = state.level >= 3 ? [false, false] : [false];
@@ -213,7 +217,6 @@ export const applyMove = (state, move) => {
                 });
 
                 if (capturedOpponentSeed) {
-                    console.log(`CAPTURE! Player ${activePlayer.id} captured opponent seed ${capturedOpponentSeed.id} at position ${capturedOpponentSeed.position}`);
                     capturedOpponentSeed.position = HOUSE_POS; // Send opponent seed back to house
                     capturedOpponentSeed.landingPos = HOUSE_POS;
 

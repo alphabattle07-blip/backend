@@ -177,6 +177,7 @@ export const ludoGameLoop = {
         // Update Board State
         board.dice = [diceValue];
         board.waitingForRoll = false;
+        board.stateVersion = (board.stateVersion || 0) + 1;
         // Note: Logic might need to check if valid moves exist. 
         // If 6, they might get another roll? Simplified for now.
 
@@ -244,6 +245,7 @@ export const ludoGameLoop = {
         board.currentPlayerIndex = board.currentPlayerIndex === 0 ? 1 : 0;
         board.waitingForRoll = true;
         board.dice = [];
+        board.stateVersion = (board.stateVersion || 0) + 1;
 
         // Save
         await prisma.game.update({
@@ -302,7 +304,16 @@ export const ludoGameLoop = {
         const isPlayer1 = game.player1Id === userId;
         const logicalPlayerId = isPlayer1 ? 'p1' : 'p2';
 
-        // 1. Validate Turn
+        // 1. Idempotency Check (moveId)
+        if (action.moveId) {
+            const player = board.players[isPlayer1 ? 0 : 1];
+            if (player.lastProcessedMoveId === action.moveId) {
+                console.log(`[LudoLoop] Duplicate move detected (moveId: ${action.moveId}). Ignoring.`);
+                return; // Already processed
+            }
+        }
+
+        // 2. Validate Turn
         const currentPlayerIndex = board.currentPlayerIndex;
         if (board.players[currentPlayerIndex].id !== logicalPlayerId) {
             throw new Error("Not your turn");
@@ -311,7 +322,7 @@ export const ludoGameLoop = {
         const stateBefore = JSON.stringify(board);
         let updatedBoard = { ...board };
 
-        // 2. Process Intent
+        // 3. Process Intent
         if (action.type === 'ROLL_DICE') {
             if (!updatedBoard.waitingForRoll) {
                 throw new Error("Not waiting for roll");
@@ -357,7 +368,13 @@ export const ludoGameLoop = {
             throw new Error("Unknown action type");
         }
 
-        // 3. Check if State Changed. If yes, save and broadcast.
+        // 4. Update Idempotency Marker & stateVersion
+        if (action.moveId) {
+            updatedBoard.players[isPlayer1 ? 0 : 1].lastProcessedMoveId = action.moveId;
+        }
+        updatedBoard.stateVersion = (updatedBoard.stateVersion || 0) + 1;
+
+        // 5. Check if State Changed. If yes, save and broadcast.
         if (stateBefore !== JSON.stringify(updatedBoard)) {
             // If winner detected
             let status = 'IN_PROGRESS';
