@@ -24,22 +24,11 @@ export const initializeSocket = (socketIo) => {
             console.log(`[Socket] Successfully registered user ${userId} to socket ${socket.id}`);
         });
 
-        socket.on('joinGame', async (gameId) => {
+        socket.on('joinGame', (gameId) => {
             console.log(`[Socket] Socket ${socket.id} joining game: ${gameId}`);
             socket.join(gameId);
-
-            // If the game just started and turnStartTime is 0, initialize the first turn
-            const game = await prisma.game.findUnique({ where: { id: gameId } });
-            if (game && game.status === 'IN_PROGRESS') {
-                let board = game.board;
-                if (typeof board === 'string') board = JSON.parse(board);
-                if (board.turnStartTime === 0) {
-                    await ludoGameLoop.startTurn(gameId, game.player1Id);
-                } else {
-                    // Rejoining: Send current state
-                    socket.emit('gameStateUpdate', { ...board, serverTime: Date.now() });
-                }
-            }
+            const room = io.sockets.adapter.rooms.get(gameId);
+            console.log(`[Socket] Socket ${socket.id} joined ${gameId}. Room size: ${room?.size}`);
         });
 
         socket.on('leaveGame', (gameId) => {
@@ -101,10 +90,7 @@ export const getIO = () => {
 
 // Generic broadcast
 export const broadcastGameState = (gameId, event, data) => {
-    if (io) {
-        const payload = { ...data, serverTime: Date.now() };
-        io.to(gameId).emit(event, payload);
-    }
+    if (io) io.to(gameId).emit(event, data);
 };
 
 
