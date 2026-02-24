@@ -52,6 +52,20 @@ export const initializeSocket = (socketIo) => {
                 return;
             }
 
+            if (gameType === 'ludo') {
+                const userId = socketUser.get(socket.id);
+                if (userId && gameId && data) {
+                    try {
+                        console.log(`[Socket] Processing Ludo intent for user ${userId} in game ${gameId}`);
+                        await ludoGameLoop.handleAction(gameId, userId, data);
+                    } catch (err) {
+                        console.error(`[Socket] Ludo Move Error: ${err}`);
+                        socket.emit('error', { message: err.toString() });
+                    }
+                }
+                return;
+            }
+
             const updateData = data || state;
             if (gameId && updateData) {
                 socket.to(gameId).emit('gameStateUpdate', updateData);

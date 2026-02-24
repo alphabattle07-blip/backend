@@ -1,11 +1,10 @@
-
 import { broadcastGameState } from '../socket/socketManager.js';
 import { PrismaClient } from '../generated/prisma/index.js';
+import { initializeGame, rollDice, applyMove, passTurn, getValidMoves } from './ludoGameEngine.js';
 
 const prisma = new PrismaClient();
 
-// In-memory storage for active game loops/timers
-// Key: gameId, Value: { timer: NodeJS.Timeout, startTime: number, warningTimer: NodeJS.Timeout, etc. }
+// Rule 2 & 7: Active matches live in memory to prevent DB/Memory explosion.
 const activeGames = new Map();
 
 const RANK_THRESHOLDS = {
@@ -13,18 +12,8 @@ const RANK_THRESHOLDS = {
 };
 
 const TIME_LIMITS = {
-    CASUAL: {
-        TOTAL: 50000,
-        ROLL: 20000, // 0-20s Auto-roll
-        WARNING: 20000, // Yellow at 20s elapsed
-        DANGER: 40000,  // Red at 40s elapsed
-    },
-    COMPETITIVE: { // Warrior and above
-        TOTAL: 30000,
-        ROLL: 15000, // 0-15s Auto-roll
-        WARNING: 15000, // Yellow at 15s elapsed
-        DANGER: 25000,  // Red at 25s elapsed
-    }
+    CASUAL: { ROLL: 15000, MOVE: 30000 },
+    COMPETITIVE: { ROLL: 10000, MOVE: 20000 }
 };
 
 const MAX_TIMEOUTS = {
@@ -32,25 +21,135 @@ const MAX_TIMEOUTS = {
     COMPETITIVE: 3
 };
 
-// Helper to get time limits based on player rating
-const getTimeLimits = (rating) => {
-    return rating >= RANK_THRESHOLDS.WARRIOR ? TIME_LIMITS.COMPETITIVE : TIME_LIMITS.CASUAL;
+const getTimeLimits = (rating) => rating >= RANK_THRESHOLDS.WARRIOR ? TIME_LIMITS.COMPETITIVE : TIME_LIMITS.CASUAL;
+const getMaxTimeouts = (rating) => rating >= RANK_THRESHOLDS.WARRIOR ? MAX_TIMEOUTS.COMPETITIVE : MAX_TIMEOUTS.CASUAL;
+
+// Rule 2: Single Shared Game Ticker (Scale Rule)
+setInterval(() => {
+    const now = Date.now();
+    for (const [gameId, match] of activeGames.entries()) {
+        const timeLimit = match.board.waitingForRoll ? match.limits.ROLL : match.limits.MOVE;
+
+        if (now >= match.turnStartTime + timeLimit) {
+            // Rule 3: Strict Timeout Execution Lock
+            executeTimeoutSafely(gameId);
+        }
+    }
+}, 300); // Run ONE global interval
+
+const executeTimeoutSafely = (gameId) => {
+    const match = activeGames.get(gameId);
+    if (!match) return;
+
+    // Queue operation
+    match.lock = match.lock.then(async () => {
+        // Re-verify after gaining lock
+        const currentMatch = activeGames.get(gameId);
+        if (!currentMatch) return;
+
+        const timeLimit = currentMatch.board.waitingForRoll ? currentMatch.limits.ROLL : currentMatch.limits.MOVE;
+        if (Date.now() < currentMatch.turnStartTime + timeLimit) return; // Situation resolved while waiting
+
+        await handleTimeout(gameId, currentMatch);
+    }).catch(err => console.error('[Ludo Engine Error in Timeout]', err));
 };
 
-const getMaxTimeouts = (rating) => {
-    return rating >= RANK_THRESHOLDS.WARRIOR ? MAX_TIMEOUTS.COMPETITIVE : MAX_TIMEOUTS.CASUAL;
+const handleTimeout = async (gameId, match) => {
+    // Rule 4: Timeout Behavior Rules
+    const board = match.board;
+    const playerIndex = board.currentPlayerIndex;
+    const playerObj = board.players[playerIndex];
+    const playerId = playerIndex === 0 ? match.player1Id : match.player2Id;
+
+    if (!playerObj.timeouts) playerObj.timeouts = 0;
+    playerObj.timeouts += 1;
+
+    console.log(`[LudoEngine] Timeout for ${playerId} in game ${gameId} (Count: ${playerObj.timeouts})`);
+
+    // Check Forfeit
+    if (playerObj.timeouts >= match.maxTimeouts) {
+        await handleForfeit(gameId, playerId);
+        return;
+    }
+
+    // Auto-Resolve Turn
+    let newBoard = board;
+    if (newBoard.waitingForRoll) {
+        newBoard = rollDice(newBoard);
+    } else {
+        const validMoves = getValidMoves(newBoard);
+        if (validMoves.length > 0) {
+            // Auto-move random/first
+            newBoard = applyMove(newBoard, { seedIndex: validMoves[0].seedIndex });
+        } else {
+            newBoard = passTurn(newBoard);
+        }
+    }
+
+    match.board = newBoard;
+    match.turnStartTime = Date.now();
+    match.turnsSinceSave = (match.turnsSinceSave || 0) + 1;
+
+    // Rule 6: Broadcast after validation/mutation
+    broadcastState(gameId, match);
+
+    // Rule 7: DB sync occasionally
+    if (match.turnsSinceSave >= 5 || newBoard.winner) {
+        await persistMatch(gameId, match);
+    }
+};
+
+const handleForfeit = async (gameId, losingPlayerId) => {
+    const match = activeGames.get(gameId);
+    if (!match) return;
+
+    const winnerId = match.player1Id === losingPlayerId ? match.player2Id : match.player1Id;
+    match.board.winner = match.board.players[0].id === (winnerId === match.player1Id ? 'p1' : 'p2') ? 'p1' : 'p2';
+
+    await persistMatch(gameId, match, 'COMPLETED', winnerId);
+
+    broadcastGameState(gameId, 'gameForfeit', {
+        winnerId,
+        loserId: losingPlayerId,
+        message: "Opponent timed out too many times."
+    });
+
+    // Rule 10: Match Cleanup Rule
+    activeGames.delete(gameId);
+};
+
+const persistMatch = async (gameId, match, status = 'IN_PROGRESS', winnerId = null) => {
+    match.turnsSinceSave = 0;
+    const updateData = {
+        board: match.board,
+        currentTurn: match.board.currentPlayerIndex === 0 ? match.player1Id : match.player2Id,
+        status
+    };
+    if (winnerId) {
+        updateData.winnerId = winnerId;
+        updateData.endedAt = new Date();
+    }
+    await prisma.game.update({
+        where: { id: gameId },
+        data: updateData
+    });
+};
+
+const broadcastState = (gameId, match) => {
+    const timeLimit = match.board.waitingForRoll ? match.limits.ROLL : match.limits.MOVE;
+    broadcastGameState(gameId, 'gameStateUpdate', {
+        board: match.board,
+        turnStartTime: match.turnStartTime,
+        timeLimit: timeLimit,
+        serverTime: Date.now()
+    });
 };
 
 export const ludoGameLoop = {
-    /**
-     * Start or reset the turn timer for a game
-     */
-    startTurnTimer: async (gameId, currentPlayerId) => {
-        // Clear existing timers
-        ludoGameLoop.clearTurnTimer(gameId);
+    // Loads game into active memory and starts the turn
+    startOrResumeGame: async (gameId) => {
+        if (activeGames.has(gameId)) return activeGames.get(gameId);
 
-        // Fetch game/player info to determine rank settings
-        // Optimally, this data should be passed in or cached to avoid DB hits every turn
         const game = await prisma.game.findUnique({
             where: { id: gameId },
             include: {
@@ -59,229 +158,115 @@ export const ludoGameLoop = {
             }
         });
 
-        if (!game || game.status !== 'IN_PROGRESS') return;
+        if (!game || game.status !== 'IN_PROGRESS') return null;
 
-        const currentPlayer = game.player1Id === currentPlayerId ? game.player1 : game.player2;
-        if (!currentPlayer) return; // Should not happen
+        const limits = getTimeLimits(game.player1.rating || 0);
+        const maxTimeouts = getMaxTimeouts(game.player1.rating || 0);
 
-        const limits = getTimeLimits(currentPlayer.rating || 0); // Default to 0/Casual if no rating
-        const maxTimeouts = getMaxTimeouts(currentPlayer.rating || 0);
-
-        // Parse board state to check if we are waiting for roll or move
-        // This requires the board to be stored in a way we can read. 
-        // Assuming previously it was stored as JSON or JsonObject in Prisma
-        let boardState = game.board;
-        if (typeof boardState === 'string') {
-            try {
-                boardState = JSON.parse(boardState);
-            } catch (e) {
-                console.error("Failed to parse board state", e);
-                return;
-            }
+        let board = game.board;
+        if (typeof board === 'string') board = JSON.parse(board);
+        if (!board || !board.players) {
+            board = initializeGame('red', 'yellow', game.level || 2);
         }
 
-        const isRollingPhase = boardState?.waitingForRoll ?? true;
-
-        const phaseDuration = isRollingPhase ? limits.ROLL : limits.MOVE;
-        // Note: The prompt implies a continuous flow, but usually these are distinct phases in implementation.
-        // However, the prompt says:
-        // Casual: 0-15s Roll. If no action -> Auto-roll.
-        // Then 15-35s Play.
-        // This implies if they roll at 2s, they then have until the end of the turn time? 
-        // Or does the "Move" timer start fresh?
-        // "Total turn time: 45 seconds" implies a single clock.
-        // Let's implement a single turn timer that handles checkpoints.
-
-        const turnState = {
+        const match = {
             gameId,
-            playerId: currentPlayerId,
-            startTime: Date.now(),
+            player1Id: game.player1Id,
+            player2Id: game.player2Id,
+            board: board,
             limits,
             maxTimeouts,
-            // Timers
-            rollTimeout: null,
-            warningTimeout: null,
-            turnTimeout: null,
-            isRollingPhase
+            turnStartTime: Date.now(),
+            turnsSinceSave: 0,
+            lock: Promise.resolve() // Rule 3: Strict Lock
         };
 
-        activeGames.set(gameId, turnState);
+        activeGames.set(gameId, match);
+        broadcastState(gameId, match);
+        return match;
+    },
 
-        // Broadcast timer start event
-        broadcastGameState(gameId, 'turnTimerStart', {
-            totalTime: limits.TOTAL,
-            rollTime: limits.ROLL,
-            startTime: turnState.startTime
+    // Rule 1: Handle player intent dynamically
+    handleAction: (gameId, userId, actionIntent) => {
+        const match = activeGames.get(gameId);
+        if (!match) return Promise.reject("Match not active");
+
+        // Queue on lock
+        return new Promise((resolve, reject) => {
+            match.lock = match.lock.then(async () => {
+                const board = match.board;
+                if (board.winner) return reject("Game already finished");
+
+                const activePlayerId = board.currentPlayerIndex === 0 ? match.player1Id : match.player2Id;
+                if (activePlayerId !== userId) return reject("Not your turn");
+
+                // Rule 9: Optimistic UI Protection - Version Check
+                if (actionIntent.stateVersion !== undefined && actionIntent.stateVersion !== board.stateVersion) {
+                    return reject(`Stale move version: server ${board.stateVersion}, client ${actionIntent.stateVersion}`);
+                }
+
+                let newBoard = board;
+
+                if (actionIntent.action === 'ROLL') {
+                    if (!board.waitingForRoll) return reject("Already rolled");
+                    newBoard = rollDice(board);
+                } else if (actionIntent.action === 'MOVE') {
+                    if (board.waitingForRoll) return reject("Must roll first");
+                    const seedIndex = actionIntent.seedIndex;
+                    if (seedIndex === undefined) return reject("Missing seedIndex");
+                    newBoard = applyMove(board, { seedIndex });
+                } else {
+                    return reject("Unknown action");
+                }
+
+                if (newBoard === board) {
+                    return reject("Invalid Move or No state change");
+                }
+
+                // Mutate
+                match.board = newBoard;
+
+                if (newBoard.currentPlayerIndex !== board.currentPlayerIndex || newBoard.waitingForRoll !== board.waitingForRoll) {
+                    match.turnStartTime = Date.now();
+                }
+
+                // Rule 6: Broadcast only AFTER validation
+                broadcastState(gameId, match);
+
+                match.turnsSinceSave = (match.turnsSinceSave || 0) + 1;
+                if (match.turnsSinceSave >= 5 || newBoard.winner) {
+                    await persistMatch(gameId, match, newBoard.winner ? 'COMPLETED' : 'IN_PROGRESS', newBoard.winner ? (newBoard.winner === 'p1' ? match.player1Id : match.player2Id) : null);
+                    if (newBoard.winner) activeGames.delete(gameId);
+                }
+
+                resolve(newBoard);
+            }).catch(reject);
         });
+    },
 
-        // 1. Auto-Roll Checkpoint
-        // If they haven't rolled by limits.ROLL, we auto-roll for them.
-        if (isRollingPhase) {
-            turnState.rollTimeout = setTimeout(async () => {
-                await ludoGameLoop.handleAutoRoll(gameId, currentPlayerId);
-            }, limits.ROLL);
+    // Rule 5: Reconnect-Safe Snapshot
+    getSnapshot: async (gameId) => {
+        let match = activeGames.get(gameId);
+        if (!match) {
+            match = await ludoGameLoop.startOrResumeGame(gameId);
         }
+        if (!match) return null;
 
-        // 2. Warning Countdown
-        // Starts at TOTAL - WARNING
-        const warningDelay = limits.TOTAL - limits.WARNING;
-        turnState.warningTimeout = setTimeout(() => {
-            broadcastGameState(gameId, 'turnTimerWarning', {
-                timeLeft: limits.WARNING
+        return new Promise((resolve) => {
+            match.lock = match.lock.then(async () => {
+                const timeLimit = match.board.waitingForRoll ? match.limits.ROLL : match.limits.MOVE;
+                // If it should have timed out, force it to time out before sending snapshot
+                if (Date.now() >= match.turnStartTime + timeLimit) {
+                    await handleTimeout(gameId, match);
+                }
+
+                resolve({
+                    board: match.board,
+                    turnStartTime: match.turnStartTime,
+                    timeLimit: match.board.waitingForRoll ? match.limits.ROLL : match.limits.MOVE,
+                    serverTime: Date.now()
+                });
             });
-        }, warningDelay);
-
-        // 2b. Danger Countdown
-        const dangerDelay = limits.TOTAL - limits.DANGER;
-        turnState.dangerTimeout = setTimeout(() => {
-            broadcastGameState(gameId, 'turnTimerDanger', {
-                timeLeft: limits.DANGER
-            });
-        }, dangerDelay);
-
-        // 3. Turn Expiration (Forfeit/Safe Move)
-        // If they haven't finished their turn (moved) by TOTAL
-        turnState.turnTimeout = setTimeout(async () => {
-            await ludoGameLoop.handleTurnTimeout(gameId, currentPlayerId);
-        }, limits.TOTAL);
-    },
-
-    clearTurnTimer: (gameId) => {
-        const state = activeGames.get(gameId);
-        if (state) {
-            if (state.rollTimeout) clearTimeout(state.rollTimeout);
-            if (state.warningTimeout) clearTimeout(state.warningTimeout);
-            if (state.dangerTimeout) clearTimeout(state.dangerTimeout);
-            if (state.turnTimeout) clearTimeout(state.turnTimeout);
-            activeGames.delete(gameId);
-        }
-    },
-
-    handleAutoRoll: async (gameId, playerId) => {
-        console.log(`[LudoEngine] Auto-rolling for ${playerId} in game ${gameId}`);
-        // Logic to simulate a dice roll and update DB
-        // Fetch current state
-        const game = await prisma.game.findUnique({ where: { id: gameId } });
-        if (!game) return;
-
-        let board = game.board;
-        if (typeof board === 'string') board = JSON.parse(board);
-
-        // Only auto-roll if still waiting for roll
-        if (!board.waitingForRoll) return;
-
-        // Perform Roll (Random 1-6)
-        const diceValue = Math.floor(Math.random() * 6) + 1;
-
-        // Update Board State
-        board.dice = [diceValue];
-        board.waitingForRoll = false;
-        // Note: Logic might need to check if valid moves exist. 
-        // If 6, they might get another roll? Simplified for now.
-
-        // Save to DB
-        await prisma.game.update({
-            where: { id: gameId },
-            data: { board: board }
         });
-
-        // Broadcast update
-        broadcastGameState(gameId, 'gameStateUpdate', { board });
-
-        // Important: The main turn timer continues! We don't reset it.
-        // But we should visually indicate the roll happened.
-    },
-
-    handleTurnTimeout: async (gameId, playerId) => {
-        console.log(`[LudoEngine] Turn timeout for ${playerId} in game ${gameId}`);
-
-        // 1. Increment Timeout Count
-        // We need a place to store timeout counts. 
-        // board.players[index].timeouts ??
-
-        const game = await prisma.game.findUnique({ where: { id: gameId } });
-        if (!game) return;
-
-        let board = game.board;
-        if (typeof board === 'string') board = JSON.parse(board);
-
-        const playerIndex = board.players.findIndex(p => p.id === (playerId === game.player1Id ? 'p1' : 'p2'));
-        if (playerIndex === -1) return;
-
-        if (!board.players[playerIndex].timeouts) board.players[playerIndex].timeouts = 0;
-        board.players[playerIndex].timeouts += 1;
-
-        const currentTimeouts = board.players[playerIndex].timeouts;
-        const state = activeGames.get(gameId);
-        const maxTimeouts = state?.maxTimeouts || 5;
-
-        // 2. Check Forfeit Condition
-        if (currentTimeouts >= maxTimeouts) {
-            await ludoGameLoop.handleForfeit(gameId, playerId);
-            return;
-        }
-
-        // 2b. Warning on 4th timeout (for Casual)
-        if (maxTimeouts === 5 && currentTimeouts === 4) {
-            broadcastGameState(gameId, 'gameTimeoutWarning', {
-                playerId,
-                timeouts: currentTimeouts,
-                message: "WARNING: One more timeout and you will forfeit the match!"
-            });
-        }
-
-        // 3. Play Safe/Random Move
-        // Logic to find a valid piece to move.
-        await ludoGameLoop.playSafeMove(gameId, playerId, board);
-    },
-
-    playSafeMove: async (gameId, playerId, board) => {
-        // Implement logic to find the "best" or "first available" move
-        // For now, just pick the first valid piece that can move with the current dice.
-
-        // Simplified: Switch turn
-        board.currentPlayerIndex = board.currentPlayerIndex === 0 ? 1 : 0;
-        board.waitingForRoll = true;
-        board.dice = [];
-
-        // Save
-        await prisma.game.update({
-            where: { id: gameId },
-            data: {
-                board: board,
-                currentTurn: board.currentPlayerIndex === 0 ? board.players[0].id : board.players[1].id // This might need mapping back to real user IDs
-            }
-        });
-
-        broadcastGameState(gameId, 'gameStateUpdate', { board });
-
-        // Trigger next turn timer
-        // We need the ID of the next player. 
-        // WARNING: Using 'p1'/'p2' vs real UUIDs is tricky.
-        // Assuming we can resolve the next player ID.
-    },
-
-    handleForfeit: async (gameId, losingPlayerId) => {
-        console.log(`[LudoEngine] Forfeit ${losingPlayerId} in game ${gameId}`);
-
-        const game = await prisma.game.findUnique({ where: { id: gameId } });
-        const winnerId = game.player1Id === losingPlayerId ? game.player2Id : game.player1Id;
-
-        await prisma.game.update({
-            where: { id: gameId },
-            data: {
-                status: 'COMPLETED',
-                winnerId: winnerId,
-                endedAt: new Date()
-            }
-        });
-
-        broadcastGameState(gameId, 'gameForfeit', {
-            winnerId,
-            loserId: losingPlayerId,
-            message: "Opponent timed out too many times."
-        });
-
-        ludoGameLoop.clearTurnTimer(gameId);
     }
 };

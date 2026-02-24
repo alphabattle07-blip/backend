@@ -185,6 +185,11 @@ export const getGame = async (req, res) => {
       if (snapshot) {
         game.board = snapshot;
       }
+    } else if (game.gameType === 'ludo') {
+      const snapshot = await ludoGameLoop.getSnapshot(gameId);
+      if (snapshot) {
+        game.board = snapshot.board;
+      }
     }
 
     res.json({
@@ -230,14 +235,14 @@ export const updateGameState = async (req, res) => {
 
     const updateData = {};
     if (board !== undefined) {
-      if (game.gameType === 'whot') {
-        return res.status(400).json({ success: false, message: 'Direct board updates not allowed for Whot. Use /move endpoint.' });
+      if (game.gameType === 'whot' || game.gameType === 'ludo') {
+        return res.status(400).json({ success: false, message: 'Direct board updates not allowed. Use intent endpoints.' });
       }
       updateData.board = board;
     }
     if (currentTurn !== undefined) {
-      if (game.gameType === 'whot') {
-        return res.status(400).json({ success: false, message: 'Direct turn updates not allowed for Whot.' });
+      if (game.gameType === 'whot' || game.gameType === 'ludo') {
+        return res.status(400).json({ success: false, message: 'Direct turn updates not allowed.' });
       }
       updateData.currentTurn = currentTurn;
     }
