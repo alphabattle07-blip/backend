@@ -11,89 +11,131 @@ const RANK_THRESHOLDS = {
     WARRIOR: 1750
 };
 
-const TIME_LIMITS = {
-    CASUAL: { ROLL: 15000, MOVE: 30000 },
-    COMPETITIVE: { ROLL: 10000, MOVE: 20000 }
+COMPETITIVE: 3 // Rule Two
 };
 
-const MAX_TIMEOUTS = {
-    CASUAL: 5,
-    COMPETITIVE: 3
+const getTimerProfile = (rating) => {
+    return rating >= RANK_THRESHOLDS.WARRIOR ? 'ruleOne' : 'ruleTwo';
 };
 
-const getTimeLimits = (rating) => rating >= RANK_THRESHOLDS.WARRIOR ? TIME_LIMITS.COMPETITIVE : TIME_LIMITS.CASUAL;
-const getMaxTimeouts = (rating) => rating >= RANK_THRESHOLDS.WARRIOR ? MAX_TIMEOUTS.COMPETITIVE : MAX_TIMEOUTS.CASUAL;
+const getMaxAutoPlays = (rating) => {
+    return rating >= RANK_THRESHOLDS.WARRIOR ? MAX_TIMEOUTS.WARRIOR : MAX_TIMEOUTS.COMPETITIVE;
+};
 
-// Rule 2: Single Shared Game Ticker (Scale Rule)
+const setTurnProfile = (match) => {
+    const now = Date.now();
+    match.turnStartTime = now;
+
+    // Reset roll tracker
+    match.hasRolledThisTurn = !match.board.waitingForRoll;
+
+    if (match.timerProfile === 'ruleOne') {
+        match.turnDuration = 25000;
+        match.yellowAt = now + 10000;
+        match.diceTriggerAt = now + 15000;
+        match.redAt = now + 20000;
+        match.autoPlayAt = now + 25000;
+    } else {
+        match.turnDuration = 19000;
+        match.yellowAt = now + 7000;
+        match.diceTriggerAt = now + 10000;
+        match.redAt = now + 14000;
+        match.autoPlayAt = now + 19000;
+    }
+};
+
+// Central Ticker Enhancement
 setInterval(() => {
     const now = Date.now();
     for (const [gameId, match] of activeGames.entries()) {
-        const timeLimit = match.board.waitingForRoll ? match.limits.ROLL : match.limits.MOVE;
+        const board = match.board;
+        if (board.winner) continue;
 
-        if (now >= match.turnStartTime + timeLimit) {
-            // Rule 3: Strict Timeout Execution Lock
-            executeTimeoutSafely(gameId);
+        // A. Dice Trigger Check
+        if (!match.hasRolledThisTurn && now >= match.diceTriggerAt) {
+            executeAutoRollSafely(gameId);
+        }
+
+        // B. Auto-Play Check
+        if (now >= match.autoPlayAt) {
+            executeAutoPlaySafely(gameId);
         }
     }
-}, 300); // Run ONE global interval
+}, 300); // 300ms non-blocking
 
-const executeTimeoutSafely = (gameId) => {
+const executeAutoRollSafely = (gameId) => {
     const match = activeGames.get(gameId);
     if (!match) return;
 
-    // Queue operation
     match.lock = match.lock.then(async () => {
-        // Re-verify after gaining lock
         const currentMatch = activeGames.get(gameId);
-        if (!currentMatch) return;
+        if (!currentMatch || currentMatch.board.winner) return;
+        if (currentMatch.hasRolledThisTurn || Date.now() < currentMatch.diceTriggerAt) return; // Prevent duplicate
 
-        const timeLimit = currentMatch.board.waitingForRoll ? currentMatch.limits.ROLL : currentMatch.limits.MOVE;
-        if (Date.now() < currentMatch.turnStartTime + timeLimit) return; // Situation resolved while waiting
+        console.log(`[LudoEngine] Auto-roll triggered for game ${gameId}`);
+        const newBoard = rollDice(currentMatch.board);
 
-        await handleTimeout(gameId, currentMatch);
-    }).catch(err => console.error('[Ludo Engine Error in Timeout]', err));
+        currentMatch.board = newBoard;
+        currentMatch.hasRolledThisTurn = true;
+        // Do NOT increment autoPlay count
+        // Do NOT reset timer
+
+        broadcastState(gameId, currentMatch);
+    }).catch(err => console.error('[Ludo Engine Error Auto-Roll]', err));
 };
 
-const handleTimeout = async (gameId, match) => {
-    // Rule 4: Timeout Behavior Rules
+const executeAutoPlaySafely = (gameId) => {
+    const match = activeGames.get(gameId);
+    if (!match) return;
+
+    match.lock = match.lock.then(async () => {
+        const currentMatch = activeGames.get(gameId);
+        if (!currentMatch || currentMatch.board.winner) return;
+        if (Date.now() < currentMatch.autoPlayAt) return; // Situation resolved while waiting
+
+        await handleAutoPlay(gameId, currentMatch);
+    }).catch(err => console.error('[Ludo Engine Error Auto-Play]', err));
+};
+
+import { getDeterministicAutoMove } from './ludoGameEngine.js'; // Will implement next
+
+const handleAutoPlay = async (gameId, match) => {
     const board = match.board;
     const playerIndex = board.currentPlayerIndex;
-    const playerObj = board.players[playerIndex];
     const playerId = playerIndex === 0 ? match.player1Id : match.player2Id;
 
-    if (!playerObj.timeouts) playerObj.timeouts = 0;
-    playerObj.timeouts += 1;
+    if (!match.autoPlayCount) match.autoPlayCount = {};
+    if (!match.autoPlayCount[playerId]) match.autoPlayCount[playerId] = 0;
 
-    console.log(`[LudoEngine] Timeout for ${playerId} in game ${gameId} (Count: ${playerObj.timeouts})`);
+    match.autoPlayCount[playerId] += 1;
+    console.log(`[LudoEngine] Auto-play triggered for ${playerId} in game ${gameId} (Count: ${match.autoPlayCount[playerId]}/${match.maxAutoPlays})`);
 
-    // Check Forfeit
-    if (playerObj.timeouts >= match.maxTimeouts) {
+    // Check Loss Threshold
+    if (match.autoPlayCount[playerId] >= match.maxAutoPlays) {
         await handleForfeit(gameId, playerId);
         return;
     }
 
-    // Auto-Resolve Turn
+    // Auto-Play Logic (Deterministic Only)
     let newBoard = board;
     if (newBoard.waitingForRoll) {
         newBoard = rollDice(newBoard);
+    }
+
+    // Try to get a deterministic move
+    const autoMove = getDeterministicAutoMove(newBoard);
+    if (autoMove) {
+        newBoard = applyMove(newBoard, autoMove);
     } else {
-        const validMoves = getValidMoves(newBoard);
-        if (validMoves.length > 0) {
-            // Auto-move random/first
-            newBoard = applyMove(newBoard, { seedIndex: validMoves[0].seedIndex });
-        } else {
-            newBoard = passTurn(newBoard);
-        }
+        newBoard = passTurn(newBoard);
     }
 
     match.board = newBoard;
-    match.turnStartTime = Date.now();
+    setTurnProfile(match); // Reset strictly
     match.turnsSinceSave = (match.turnsSinceSave || 0) + 1;
 
-    // Rule 6: Broadcast after validation/mutation
     broadcastState(gameId, match);
 
-    // Rule 7: DB sync occasionally
     if (match.turnsSinceSave >= 5 || newBoard.winner) {
         await persistMatch(gameId, match);
     }
@@ -114,7 +156,6 @@ const handleForfeit = async (gameId, losingPlayerId) => {
         message: "Opponent timed out too many times."
     });
 
-    // Rule 10: Match Cleanup Rule
     activeGames.delete(gameId);
 };
 
@@ -136,11 +177,13 @@ const persistMatch = async (gameId, match, status = 'IN_PROGRESS', winnerId = nu
 };
 
 const broadcastState = (gameId, match) => {
-    const timeLimit = match.board.waitingForRoll ? match.limits.ROLL : match.limits.MOVE;
     broadcastGameState(gameId, 'gameStateUpdate', {
         board: match.board,
         turnStartTime: match.turnStartTime,
-        timeLimit: timeLimit,
+        turnDuration: match.turnDuration,
+        yellowAt: match.yellowAt,
+        redAt: match.redAt,
+        autoPlayAt: match.autoPlayAt,
         serverTime: Date.now()
     });
 };
@@ -160,8 +203,8 @@ export const ludoGameLoop = {
 
         if (!game || game.status !== 'IN_PROGRESS') return null;
 
-        const limits = getTimeLimits(game.player1.rating || 0);
-        const maxTimeouts = getMaxTimeouts(game.player1.rating || 0);
+        const timerProfile = getTimerProfile(game.player1.rating || 0);
+        const maxAutoPlays = getMaxAutoPlays(game.player1.rating || 0);
 
         let board = game.board;
         if (typeof board === 'string') board = JSON.parse(board);
@@ -174,12 +217,14 @@ export const ludoGameLoop = {
             player1Id: game.player1Id,
             player2Id: game.player2Id,
             board: board,
-            limits,
-            maxTimeouts,
-            turnStartTime: Date.now(),
+            timerProfile,
+            maxAutoPlays,
+            autoPlayCount: {},
             turnsSinceSave: 0,
-            lock: Promise.resolve() // Rule 3: Strict Lock
+            lock: Promise.resolve()
         };
+
+        setTurnProfile(match);
 
         activeGames.set(gameId, match);
         broadcastState(gameId, match);
@@ -205,11 +250,15 @@ export const ludoGameLoop = {
                     return reject(`Stale move version: server ${board.stateVersion}, client ${actionIntent.stateVersion}`);
                 }
 
+                // Anti-Desync validation: Reject moves after autoPlayAt
+                if (Date.now() >= match.autoPlayAt) return reject("Time expired");
+
                 let newBoard = board;
 
                 if (actionIntent.action === 'ROLL') {
                     if (!board.waitingForRoll) return reject("Already rolled");
                     newBoard = rollDice(board);
+                    match.hasRolledThisTurn = true;
                 } else if (actionIntent.action === 'MOVE') {
                     if (board.waitingForRoll) return reject("Must roll first");
                     const seedIndex = actionIntent.seedIndex;
@@ -226,8 +275,9 @@ export const ludoGameLoop = {
                 // Mutate
                 match.board = newBoard;
 
-                if (newBoard.currentPlayerIndex !== board.currentPlayerIndex || newBoard.waitingForRoll !== board.waitingForRoll) {
-                    match.turnStartTime = Date.now();
+                // Turn transition
+                if (newBoard.currentPlayerIndex !== board.currentPlayerIndex) {
+                    setTurnProfile(match);
                 }
 
                 // Rule 6: Broadcast only AFTER validation
@@ -254,16 +304,22 @@ export const ludoGameLoop = {
 
         return new Promise((resolve) => {
             match.lock = match.lock.then(async () => {
-                const timeLimit = match.board.waitingForRoll ? match.limits.ROLL : match.limits.MOVE;
-                // If it should have timed out, force it to time out before sending snapshot
-                if (Date.now() >= match.turnStartTime + timeLimit) {
-                    await handleTimeout(gameId, match);
+                const now = Date.now();
+
+                // Reconnect Snapshot validation
+                if (now >= match.autoPlayAt) {
+                    await handleAutoPlay(gameId, match);
+                } else if (!match.hasRolledThisTurn && now >= match.diceTriggerAt) {
+                    await executeAutoRollSafely(gameId);
                 }
 
                 resolve({
                     board: match.board,
                     turnStartTime: match.turnStartTime,
-                    timeLimit: match.board.waitingForRoll ? match.limits.ROLL : match.limits.MOVE,
+                    turnDuration: match.turnDuration,
+                    yellowAt: match.yellowAt,
+                    redAt: match.redAt,
+                    autoPlayAt: match.autoPlayAt,
                     serverTime: Date.now()
                 });
             });

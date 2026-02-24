@@ -106,9 +106,7 @@ export const joinGame = async (req, res) => {
     });
 
     // START GAME TIMER
-    if (game.gameType === 'ludo') {
-      ludoGameLoop.startTurnTimer(gameId, updatedGame.player1Id);
-    } else if (game.gameType === 'whot') {
+    if (game.gameType === 'whot') {
       whotGameLoop.startTurnTimer(gameId, updatedGame.currentTurn);
     }
 
@@ -252,9 +250,7 @@ export const updateGameState = async (req, res) => {
     if (status === 'COMPLETED') {
       updateData.endedAt = new Date();
       // Clear Timer
-      if (game.gameType === 'ludo') {
-        ludoGameLoop.clearTurnTimer(gameId);
-      } else if (game.gameType === 'whot') {
+      if (game.gameType === 'whot') {
         whotGameLoop.clearTurnTimer(gameId);
       }
     }
