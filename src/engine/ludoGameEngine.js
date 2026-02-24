@@ -293,10 +293,35 @@ export const passTurn = (state) => {
     };
 };
 
+export const handleTurnTimeout = (state) => {
+    const player = state.players[state.currentPlayerIndex];
+
+    // 1. Increment Timeout Count
+    // In our engine, we store timeouts per player object
+    player.timeouts = (player.timeouts || 0) + 1;
+
+    // 2. Perform Auto-Action
+    if (state.waitingForRoll) {
+        // Auto-roll
+        return rollDice(state);
+    } else {
+        // Auto-play safe move
+        const validMoves = getValidMoves(state);
+        if (validMoves.length > 0) {
+            // Pick the first valid move
+            return applyMove(state, validMoves[0]);
+        } else {
+            // No moves possible? Pass turn
+            return passTurn(state);
+        }
+    }
+};
+
 export const ludoGameEngine = {
     initializeGame,
     rollDice,
     getValidMoves,
     applyMove,
-    passTurn
+    passTurn,
+    handleTurnTimeout
 };

@@ -35,6 +35,21 @@ export const initializeSocket = (socketIo) => {
             socket.leave(gameId);
         });
 
+        socket.on('recoverLudoGame', async (gameId) => {
+            const userId = socketUser.get(socket.id);
+            if (userId && gameId) {
+                try {
+                    console.log(`[Socket] Recovering Ludo game ${gameId} for user ${userId}`);
+                    const state = await ludoGameLoop.getFullStateSnapshot(gameId, userId);
+                    if (state) {
+                        socket.emit('gameStateUpdate', state);
+                    }
+                } catch (err) {
+                    console.error(`[Socket] Ludo Recovery Error: ${err.message}`);
+                }
+            }
+        });
+
         socket.on('gameAction', async (payload) => {
             const { gameId, state, data, gameType } = payload;
 
