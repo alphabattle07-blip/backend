@@ -3,6 +3,7 @@ import { broadcastGameState } from '../socket/socketManager.js';
 import { PrismaClient } from '../generated/prisma/index.js';
 import { ludoGameEngine } from './ludoGameEngine.js';
 import { processMatchRewards } from '../utils/gameUtils.js';
+import redis from '../utils/redis.js';
 
 const prisma = new PrismaClient();
 
@@ -60,10 +61,23 @@ export const ludoGameLoop = {
         // Fetch or create entry
         let entry = activeLudoGames.get(gameId);
         if (!entry) {
-            const game = await prisma.game.findUnique({ where: { id: gameId } });
-            if (!game) return;
+            // First check Redis for active state
+            const cached = await redis.get(`match:ludo:${gameId}`);
+            let gameState = null;
+
+            if (cached) {
+                gameState = JSON.parse(cached);
+            } else {
+                // Fallback to Prisma if not in Redis
+                const game = await prisma.game.findUnique({ where: { id: gameId } });
+                if (!game) return;
+                gameState = typeof game.board === 'string' ? JSON.parse(game.board) : game.board;
+                // Save to Redis
+                await redis.set(`match:ludo:${gameId}`, JSON.stringify(gameState));
+            }
+
             entry = {
-                state: typeof game.board === 'string' ? JSON.parse(game.board) : game.board,
+                state: gameState,
                 lock: Promise.resolve(),
                 isLocked: false,
                 autoRolled: false
@@ -119,10 +133,7 @@ export const ludoGameLoop = {
 
                 // 3. Save & Broadcast
                 entry.state = nextBoard;
-                await prisma.game.update({
-                    where: { id: gameId },
-                    data: { board: nextBoard }
-                });
+                await redis.set(`match:ludo:${gameId}`, JSON.stringify(nextBoard));
 
                 broadcastGameState(gameId, 'gameStateUpdate', nextBoard);
 
@@ -162,6 +173,7 @@ export const ludoGameLoop = {
 
         broadcastGameState(gameId, 'gameEnded', { winnerId, reason: 'forfeit' });
         activeLudoGames.delete(gameId);
+        await redis.del(`match:ludo:${gameId}`);
     },
 
     /**
@@ -224,14 +236,12 @@ export const ludoGameLoop = {
 
                     broadcastGameState(gameId, 'gameEnded', { winnerId });
                     activeLudoGames.delete(gameId);
+                    await redis.del(`match:ludo:${gameId}`);
                     return;
                 }
 
                 entry.state = updatedBoard;
-                await prisma.game.update({
-                    where: { id: gameId },
-                    data: { board: updatedBoard }
-                });
+                await redis.set(`match:ludo:${gameId}`, JSON.stringify(updatedBoard));
 
                 broadcastGameState(gameId, 'gameStateUpdate', updatedBoard);
 
@@ -255,10 +265,23 @@ export const ludoGameLoop = {
     getFullStateSnapshot: async (gameId, userId) => {
         let entry = activeLudoGames.get(gameId);
         if (!entry) {
-            const game = await prisma.game.findUnique({ where: { id: gameId } });
-            if (!game || game.status !== 'IN_PROGRESS') return null;
+            // Check Redis first
+            const cached = await redis.get(`match:ludo:${gameId}`);
+            let gameState = null;
+
+            if (cached) {
+                gameState = JSON.parse(cached);
+            } else {
+                // Fallback to Prisma
+                const game = await prisma.game.findUnique({ where: { id: gameId } });
+                if (!game || game.status !== 'IN_PROGRESS') return null;
+                gameState = typeof game.board === 'string' ? JSON.parse(game.board) : game.board;
+                // Save to Redis
+                await redis.set(`match:ludo:${gameId}`, JSON.stringify(gameState));
+            }
+
             entry = {
-                state: typeof game.board === 'string' ? JSON.parse(game.board) : game.board,
+                state: gameState,
                 lock: Promise.resolve(),
                 isLocked: false,
                 autoRolled: false

@@ -190,7 +190,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "D:\\Document\\react native work\\alphaGameTolo\\backend\\src\\generated\\prisma",
+      "value": "D:\\Document\\react-native-work\\new ALpha-battle\\backend\\src\\generated\\prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -204,7 +204,7 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "D:\\Document\\react native work\\alphaGameTolo\\backend\\prisma\\schema.prisma",
+    "sourceFilePath": "D:\\Document\\react-native-work\\new ALpha-battle\\backend\\prisma\\schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {
@@ -226,9 +226,9 @@ const config = {
       }
     }
   },
-  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider = \"prisma-client-js\"\n  output   = \"../src/generated/prisma\"\n}\n\ndatasource db {\n  provider = \"postgresql\"\n  url      = env(\"DATABASE_URL\")\n}\n\nmodel User {\n  id          String   @id @default(cuid())\n  email       String   @unique\n  password    String\n  name        String?\n  avatar      String?\n  battleBonus Int      @default(0)\n  levelReward Int      @default(0)\n  rating      Int      @default(1000)\n  createdAt   DateTime @default(now())\n  updatedAt   DateTime @updatedAt\n\n  // Game statistics relationship\n  gameStats GameStats[]\n\n  // Online game relationships\n  gamesAsPlayer1 Game[]        @relation(\"Player1\")\n  gamesAsPlayer2 Game[]        @relation(\"Player2\")\n  gameSessions   GameSession[]\n\n  @@map(\"users\")\n}\n\nmodel GameStats {\n  id     String @id @default(cuid())\n  userId String\n\n  // Game identification\n  gameId String\n\n  // Game statistics\n  wins   Int @default(0)\n  losses Int @default(0)\n  draws  Int @default(0)\n\n  // Rating system\n  rating Int @default(1000) // Rookie level starts at 1000\n\n  // Timestamps\n  createdAt DateTime @default(now())\n  updatedAt DateTime @updatedAt\n\n  // Relations\n  user User @relation(fields: [userId], references: [id], onDelete: Cascade)\n\n  @@unique([userId, gameId])\n  @@map(\"game_stats\")\n}\n\nmodel Game {\n  id       String @id @default(cuid())\n  gameType String // \"ayo\", \"whot\", etc.\n\n  // Players\n  player1Id String\n  player2Id String?\n\n  // Game state\n  status      GameStatus @default(WAITING) // WAITING, IN_PROGRESS, COMPLETED, ABANDONED\n  board       Json? // Game board state\n  currentTurn String? // Current player's turn\n  winnerId    String?\n\n  // Timestamps\n  createdAt DateTime  @default(now())\n  updatedAt DateTime  @updatedAt\n  startedAt DateTime?\n  endedAt   DateTime?\n\n  // Relations\n  player1 User  @relation(\"Player1\", fields: [player1Id], references: [id])\n  player2 User? @relation(\"Player2\", fields: [player2Id], references: [id])\n\n  // Game sessions for real-time tracking\n  sessions GameSession[]\n\n  @@map(\"games\")\n}\n\nmodel GameSession {\n  id     String @id @default(cuid())\n  gameId String\n  userId String\n\n  // Session state\n  isConnected  Boolean  @default(true)\n  lastActivity DateTime @default(now())\n\n  // Relations\n  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)\n  user User @relation(fields: [userId], references: [id], onDelete: Cascade)\n\n  @@unique([gameId, userId])\n  @@map(\"game_sessions\")\n}\n\nenum GameStatus {\n  WAITING\n  IN_PROGRESS\n  COMPLETED\n  ABANDONED\n}\n",
-  "inlineSchemaHash": "dd1151581415763a5bef738e0e6b2f1c52116aab988f2f10d12c7fb87bbe610c",
-  "copyEngine": false
+  "inlineSchema": "// This is your Prisma schema file,\n// learn more about it in the docs: https://pris.ly/d/prisma-schema\n\n// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?\n// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init\n\ngenerator client {\n  provider = \"prisma-client-js\"\n  output   = \"../src/generated/prisma\"\n}\n\ndatasource db {\n  provider  = \"postgresql\"\n  url       = env(\"DATABASE_URL\")\n  directUrl = env(\"DIRECT_URL\")\n}\n\nmodel User {\n  id          String   @id @default(cuid())\n  email       String   @unique\n  password    String\n  name        String?\n  avatar      String?\n  battleBonus Int      @default(0)\n  levelReward Int      @default(0)\n  rating      Int      @default(1000)\n  createdAt   DateTime @default(now())\n  updatedAt   DateTime @updatedAt\n\n  // Game statistics relationship\n  gameStats GameStats[]\n\n  // Online game relationships\n  gamesAsPlayer1 Game[]        @relation(\"Player1\")\n  gamesAsPlayer2 Game[]        @relation(\"Player2\")\n  gameSessions   GameSession[]\n\n  @@map(\"users\")\n}\n\nmodel GameStats {\n  id     String @id @default(cuid())\n  userId String\n\n  // Game identification\n  gameId String\n\n  // Game statistics\n  wins   Int @default(0)\n  losses Int @default(0)\n  draws  Int @default(0)\n\n  // Rating system\n  rating Int @default(1000) // Rookie level starts at 1000\n\n  // Timestamps\n  createdAt DateTime @default(now())\n  updatedAt DateTime @updatedAt\n\n  // Relations\n  user User @relation(fields: [userId], references: [id], onDelete: Cascade)\n\n  @@unique([userId, gameId])\n  @@map(\"game_stats\")\n}\n\nmodel Game {\n  id       String @id @default(cuid())\n  gameType String // \"ayo\", \"whot\", etc.\n\n  // Players\n  player1Id String\n  player2Id String?\n\n  // Game state\n  status      GameStatus @default(WAITING) // WAITING, IN_PROGRESS, COMPLETED, ABANDONED\n  board       Json? // Game board state\n  currentTurn String? // Current player's turn\n  winnerId    String?\n\n  // Timestamps\n  createdAt DateTime  @default(now())\n  updatedAt DateTime  @updatedAt\n  startedAt DateTime?\n  endedAt   DateTime?\n\n  // Relations\n  player1 User  @relation(\"Player1\", fields: [player1Id], references: [id])\n  player2 User? @relation(\"Player2\", fields: [player2Id], references: [id])\n\n  // Game sessions for real-time tracking\n  sessions GameSession[]\n\n  @@map(\"games\")\n}\n\nmodel GameSession {\n  id     String @id @default(cuid())\n  gameId String\n  userId String\n\n  // Session state\n  isConnected  Boolean  @default(true)\n  lastActivity DateTime @default(now())\n\n  // Relations\n  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)\n  user User @relation(fields: [userId], references: [id], onDelete: Cascade)\n\n  @@unique([gameId, userId])\n  @@map(\"game_sessions\")\n}\n\nenum GameStatus {\n  WAITING\n  IN_PROGRESS\n  COMPLETED\n  ABANDONED\n}\n",
+  "inlineSchemaHash": "c1499dd4f71d86e50a8d31740871a8b09c52f53d4630045ade80855ad75b1016",
+  "copyEngine": true
 }
 
 const fs = require('fs')
@@ -265,3 +265,9 @@ const PrismaClient = getPrismaClient(config)
 exports.PrismaClient = PrismaClient
 Object.assign(exports, Prisma)
 
+// file annotations for bundling tools to include these files
+path.join(__dirname, "query_engine-windows.dll.node");
+path.join(process.cwd(), "src/generated/prisma/query_engine-windows.dll.node")
+// file annotations for bundling tools to include these files
+path.join(__dirname, "schema.prisma");
+path.join(process.cwd(), "src/generated/prisma/schema.prisma")
