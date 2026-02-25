@@ -21,7 +21,7 @@ export const createGame = async (req, res) => {
       },
       include: {
         player1: {
-          select: { id: true, name: true, rating: true }
+          select: { id: true, name: true, avatar: true, rating: true, gameStats: true }
         }
       }
     });
@@ -48,8 +48,8 @@ export const joinGame = async (req, res) => {
     const game = await prisma.game.findUnique({
       where: { id: gameId },
       include: {
-        player1: { select: { id: true, name: true, rating: true } },
-        player2: { select: { id: true, name: true, rating: true } }
+        player1: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } },
+        player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
       }
     });
 
@@ -100,8 +100,8 @@ export const joinGame = async (req, res) => {
       where: { id: gameId },
       data: updateData,
       include: {
-        player1: { select: { id: true, name: true, rating: true } },
-        player2: { select: { id: true, name: true, rating: true } }
+        player1: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } },
+        player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
       }
     });
 
@@ -140,7 +140,7 @@ export const getAvailableGames = async (req, res) => {
       },
       include: {
         player1: {
-          select: { id: true, name: true, rating: true }
+          select: { id: true, name: true, avatar: true, rating: true, gameStats: true }
         }
       },
       orderBy: { createdAt: 'desc' }
@@ -167,8 +167,8 @@ export const getGame = async (req, res) => {
     const game = await prisma.game.findUnique({
       where: { id: gameId },
       include: {
-        player1: { select: { id: true, name: true, rating: true } },
-        player2: { select: { id: true, name: true, rating: true } }
+        player1: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } },
+        player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
       }
     });
 
@@ -258,8 +258,8 @@ export const updateGameState = async (req, res) => {
       where: { id: gameId },
       data: updateData,
       include: {
-        player1: { select: { id: true, name: true, rating: true } },
-        player2: { select: { id: true, name: true, rating: true } }
+        player1: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } },
+        player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
       }
     });
 

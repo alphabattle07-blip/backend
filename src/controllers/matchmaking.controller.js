@@ -50,7 +50,7 @@ export const startMatchmaking = async (req, res) => {
         // Get user's current rating
         const user = await prisma.user.findUnique({
             where: { id: userId },
-            select: { id: true, name: true, rating: true }
+            select: { id: true, name: true, avatar: true, rating: true, gameStats: true }
         });
 
         if (!user) {
@@ -79,7 +79,7 @@ export const startMatchmaking = async (req, res) => {
             // Get opponent details
             const opponent = await prisma.user.findUnique({
                 where: { id: bestMatch.userId },
-                select: { id: true, name: true, rating: true }
+                select: { id: true, name: true, avatar: true, rating: true, gameStats: true }
             });
 
             // Create game with both players
@@ -94,8 +94,8 @@ export const startMatchmaking = async (req, res) => {
                         startedAt: new Date()
                     },
                     include: {
-                        player1: { select: { id: true, name: true, rating: true } },
-                        player2: { select: { id: true, name: true, rating: true } }
+                        player1: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } },
+                        player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
                     }
                 });
                 const highestRating = Math.max(opponent.rating || 0, user.rating || 0);
@@ -108,8 +108,8 @@ export const startMatchmaking = async (req, res) => {
                     where: { id: game.id },
                     data: { board: matchState, currentTurn: matchState.turnPlayer },
                     include: {
-                        player1: { select: { id: true, name: true, rating: true } },
-                        player2: { select: { id: true, name: true, rating: true } }
+                        player1: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } },
+                        player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
                     }
                 });
                 whotGameLoop.startTurnTimer(game.id, matchState.turnPlayer);
@@ -128,8 +128,8 @@ export const startMatchmaking = async (req, res) => {
                         startedAt: new Date()
                     },
                     include: {
-                        player1: { select: { id: true, name: true, rating: true } },
-                        player2: { select: { id: true, name: true, rating: true } }
+                        player1: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } },
+                        player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
                     }
                 });
 
@@ -219,8 +219,8 @@ export const checkMatchmakingStatus = async (req, res) => {
                     }
                 },
                 include: {
-                    player1: { select: { id: true, name: true, rating: true } },
-                    player2: { select: { id: true, name: true, rating: true } }
+                    player1: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } },
+                    player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
                 },
                 orderBy: { startedAt: 'desc' }
             });
@@ -248,7 +248,7 @@ export const checkMatchmakingStatus = async (req, res) => {
         // Still in queue, try to find match again
         const user = await prisma.user.findUnique({
             where: { id: userId },
-            select: { id: true, name: true, rating: true }
+            select: { id: true, name: true, avatar: true, rating: true, gameStats: true }
         });
 
         const bestMatch = findBestMatch(user.rating, gameType, userId);
@@ -261,7 +261,7 @@ export const checkMatchmakingStatus = async (req, res) => {
             // Get opponent details
             const opponent = await prisma.user.findUnique({
                 where: { id: bestMatch.userId },
-                select: { id: true, name: true, rating: true }
+                select: { id: true, name: true, avatar: true, rating: true, gameStats: true }
             });
 
             let game;
@@ -275,8 +275,8 @@ export const checkMatchmakingStatus = async (req, res) => {
                         startedAt: new Date()
                     },
                     include: {
-                        player1: { select: { id: true, name: true, rating: true } },
-                        player2: { select: { id: true, name: true, rating: true } }
+                        player1: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } },
+                        player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
                     }
                 });
                 const highestRating = Math.max(user.rating || 0, opponent.rating || 0);
@@ -289,8 +289,8 @@ export const checkMatchmakingStatus = async (req, res) => {
                     where: { id: game.id },
                     data: { board: matchState, currentTurn: matchState.turnPlayer },
                     include: {
-                        player1: { select: { id: true, name: true, rating: true } },
-                        player2: { select: { id: true, name: true, rating: true } }
+                        player1: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } },
+                        player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
                     }
                 });
                 whotGameLoop.startTurnTimer(game.id, matchState.turnPlayer);
@@ -308,8 +308,8 @@ export const checkMatchmakingStatus = async (req, res) => {
                         startedAt: new Date()
                     },
                     include: {
-                        player1: { select: { id: true, name: true, rating: true } },
-                        player2: { select: { id: true, name: true, rating: true } }
+                        player1: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } },
+                        player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
                     }
                 });
 
