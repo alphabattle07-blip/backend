@@ -13,16 +13,10 @@ export const authenticateToken = async (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: { id: true, email: true, name: true }
-    });
 
-    if (!user) {
-      return res.status(401).json({ error: 'Invalid token' });
-    }
+    // Trust the JWT payload to avoid hitting the database on every request
+    req.user = { id: decoded.userId, name: decoded.name || 'Player' };
 
-    req.user = user;
     next();
   } catch (error) {
     return res.status(403).json({ error: 'Invalid or expired token' });

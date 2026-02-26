@@ -80,7 +80,7 @@ export const register = async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user.id },
+      { userId: user.id, name: user.name },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
@@ -123,7 +123,7 @@ export const login = async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user.id },
+      { userId: user.id, name: user.name },
       JWT_SECRET,
       { expiresIn: '24h' }
     );

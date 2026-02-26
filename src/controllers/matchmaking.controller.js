@@ -9,6 +9,9 @@ const prisma = new PrismaClient();
 // Store for matchmaking queue
 const matchmakingQueue = new Map(); // userId -> { rating, timestamp, gameType }
 
+// Store for found matches to avoid DB polling leaks
+const matchedGames = new Map(); // userId -> { game, timestamp }
+
 /**
  * Calculate rating difference between two players
  */
@@ -137,6 +140,9 @@ export const startMatchmaking = async (req, res) => {
                 ludoGameLoop.startTurnTimer(game.id, game.player1Id);
             }
 
+            // Save matched game to memory for the pending opponent who is polling
+            matchedGames.set(bestMatch.userId, { game, timestamp: Date.now() });
+
             return res.json({
                 success: true,
                 matched: true,
@@ -203,40 +209,29 @@ export const checkMatchmakingStatus = async (req, res) => {
         const userId = req.user.id;
         const { gameType } = req.query;
 
-        // Check if user is still in queue
-        if (!matchmakingQueue.has(userId)) {
-            // Check if a game was created for this user
-            const recentGame = await prisma.game.findFirst({
-                where: {
-                    OR: [
-                        { player1Id: userId },
-                        { player2Id: userId }
-                    ],
-                    gameType,
-                    status: 'IN_PROGRESS',
-                    startedAt: {
-                        gte: new Date(Date.now() - 30000) // Within last 30 seconds
-                    }
-                },
-                include: {
-                    player1: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } },
-                    player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
-                },
-                orderBy: { startedAt: 'desc' }
-            });
+        // 1. Check if a match was already found for this user in memory
+        if (matchedGames.has(userId)) {
+            const { game } = matchedGames.get(userId);
+            // Deep clone to prevent mutating the stored version for other polling attempts
+            let clientGame = JSON.parse(JSON.stringify(game));
 
-            if (recentGame) {
-                if (recentGame.gameType === 'whot' && recentGame.board) {
-                    recentGame.board = whotGameEngine.scrubStateForClient(recentGame.board, userId);
-                }
-                return res.json({
-                    success: true,
-                    matched: true,
-                    game: recentGame,
-                    message: 'Match found!'
-                });
+            if (clientGame.gameType === 'whot' && clientGame.board) {
+                clientGame.board = whotGameEngine.scrubStateForClient(clientGame.board, userId);
             }
 
+            // Optional: delete from matchedGames so it doesn't linger forever, 
+            // but the client might poll a few extra times before unmounting. 
+            // The cleanup interval will catch it later.
+            return res.json({
+                success: true,
+                matched: true,
+                game: clientGame,
+                message: 'Match found!'
+            });
+        }
+
+        // 2. Check if user is still in queue
+        if (!matchmakingQueue.has(userId)) {
             return res.json({
                 success: true,
                 matched: false,
@@ -245,13 +240,9 @@ export const checkMatchmakingStatus = async (req, res) => {
             });
         }
 
-        // Still in queue, try to find match again
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { id: true, name: true, avatar: true, rating: true, gameStats: true }
-        });
-
-        const bestMatch = findBestMatch(user.rating, gameType, userId);
+        // 3. User is still in queue, try to find a match using in-memory rating
+        const queueData = matchmakingQueue.get(userId);
+        const bestMatch = findBestMatch(queueData.rating, gameType, userId);
 
         if (bestMatch) {
             // Found a match! Remove both from queue and create game
@@ -317,6 +308,9 @@ export const checkMatchmakingStatus = async (req, res) => {
                 ludoGameLoop.startTurnTimer(game.id, game.player1Id);
             }
 
+            // Save matched game to memory for the other player who is polling
+            matchedGames.set(bestMatch.userId, { game, timestamp: Date.now() });
+
             return res.json({
                 success: true,
                 matched: true,
@@ -342,7 +336,7 @@ export const checkMatchmakingStatus = async (req, res) => {
     }
 };
 
-// Clean up old queue entries (older than 5 minutes)
+// Clean up old queue entries and matched games (older than 5 minutes)
 setInterval(() => {
     const now = Date.now();
     const TIMEOUT = 5 * 60 * 1000; // 5 minutes
@@ -350,7 +344,14 @@ setInterval(() => {
     for (const [userId, data] of matchmakingQueue.entries()) {
         if (now - data.timestamp > TIMEOUT) {
             matchmakingQueue.delete(userId);
-            console.log(`Removed user ${userId} from matchmaking queue due to timeout`);
+            console.log(`[Queue] Removed user ${userId} from queue due to timeout`);
+        }
+    }
+
+    for (const [userId, data] of matchedGames.entries()) {
+        if (now - data.timestamp > TIMEOUT) {
+            matchedGames.delete(userId);
+            console.log(`[Queue] Cleaned up matched game state for user ${userId}`);
         }
     }
 }, 60000); // Run every minute
