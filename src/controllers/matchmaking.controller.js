@@ -117,8 +117,6 @@ export const startMatchmaking = async (req, res) => {
                 });
                 whotGameLoop.startTurnTimer(game.id, matchState.turnPlayer);
 
-                // Return explicitly scrubbed state to the client
-                game.board = whotGameEngine.scrubStateForClient(matchState, userId);
             } else {
                 const gameData = initializeGameData(gameType, opponent, user);
                 game = await prisma.game.create({
@@ -140,13 +138,22 @@ export const startMatchmaking = async (req, res) => {
                 ludoGameLoop.startTurnTimer(game.id, game.player1Id);
             }
 
-            // Save matched game to memory for the pending opponent who is polling
-            matchedGames.set(bestMatch.userId, { game, timestamp: Date.now() });
+            // For the pending opponent who is polling, we MUST store an unscrubbed generic state 
+            // so their poll request can scrub it for their specific userId later
+            matchedGames.set(bestMatch.userId, { game: JSON.parse(JSON.stringify(game)), timestamp: Date.now() });
+
+            // Create response object for the first player (User 2 - the one who triggered startMatchmaking)
+            let responseGame = JSON.parse(JSON.stringify(game));
+            if (gameType === 'whot') {
+                // Now safely scrub state for the player who triggered startMatchmaking
+                const matchState = (typeof game.board === 'string') ? JSON.parse(game.board) : game.board;
+                responseGame.board = whotGameEngine.scrubStateForClient(matchState, userId);
+            }
 
             return res.json({
                 success: true,
                 matched: true,
-                game,
+                game: responseGame,
                 message: 'Match found!'
             });
         } else {
@@ -249,11 +256,17 @@ export const checkMatchmakingStatus = async (req, res) => {
             matchmakingQueue.delete(userId);
             matchmakingQueue.delete(bestMatch.userId);
 
-            // Get opponent details
-            const opponent = await prisma.user.findUnique({
-                where: { id: bestMatch.userId },
-                select: { id: true, name: true, avatar: true, rating: true, gameStats: true }
-            });
+            // Get both players' full details to initialize the game
+            const [user, opponent] = await Promise.all([
+                prisma.user.findUnique({
+                    where: { id: userId },
+                    select: { id: true, name: true, avatar: true, rating: true, gameStats: true }
+                }),
+                prisma.user.findUnique({
+                    where: { id: bestMatch.userId },
+                    select: { id: true, name: true, avatar: true, rating: true, gameStats: true }
+                })
+            ]);
 
             let game;
             if (gameType === 'whot') {
@@ -286,7 +299,6 @@ export const checkMatchmakingStatus = async (req, res) => {
                 });
                 whotGameLoop.startTurnTimer(game.id, matchState.turnPlayer);
 
-                game.board = whotGameEngine.scrubStateForClient(matchState, userId);
             } else {
                 const gameData = initializeGameData(gameType, user, opponent);
                 game = await prisma.game.create({
@@ -308,13 +320,21 @@ export const checkMatchmakingStatus = async (req, res) => {
                 ludoGameLoop.startTurnTimer(game.id, game.player1Id);
             }
 
-            // Save matched game to memory for the other player who is polling
-            matchedGames.set(bestMatch.userId, { game, timestamp: Date.now() });
+            // Save matched game to memory for the other player who is polling (User 2 in this case)
+            matchedGames.set(bestMatch.userId, { game: JSON.parse(JSON.stringify(game)), timestamp: Date.now() });
+
+            // Create response object for User 1 polling (the user who was waiting)
+            let responseGame = JSON.parse(JSON.stringify(game));
+            if (gameType === 'whot') {
+                const matchState = (typeof game.board === 'string') ? JSON.parse(game.board) : game.board;
+                // SCRUB FOR THE POLLING USER (the one who initiated checkMatchmakingStatus), not bestMatch (userId)
+                responseGame.board = whotGameEngine.scrubStateForClient(matchState, userId);
+            }
 
             return res.json({
                 success: true,
                 matched: true,
-                game,
+                game: responseGame,
                 message: 'Match found!'
             });
         }

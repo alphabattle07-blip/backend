@@ -94,6 +94,9 @@ export const ludoGameLoop = {
         board.redAt = board.turnStartTime + limits.RED;
         entry.autoRolled = false;
 
+        // MUST sync new timestamps to Redis immediately
+        await redis.set(`match:ludo:${gameId}`, JSON.stringify(board));
+
         // Broadcast to clients
         broadcastGameState(gameId, 'turnStarted', {
             whoseTurn: board.players[board.currentPlayerIndex].id,
@@ -188,26 +191,50 @@ export const ludoGameLoop = {
             try {
                 let board = entry.state;
                 const isPlayer1 = userId === null ? true : await (async () => { // Handle auto-actions
+                    if (userId === 'p1') return true;
+                    if (userId === 'p2') return false;
                     const game = await prisma.game.findUnique({ where: { id: gameId } });
                     return game.player1Id === userId;
                 })();
 
-                const logicalPlayerId = isPlayer1 ? 'p1' : 'p2';
-
-                // Idempotency & Turn Validation (Existing logic)
-                if (action.moveId) {
-                    const player = board.players[isPlayer1 ? 0 : 1];
-                    if (player.lastProcessedMoveId === action.moveId) return;
+                // Turn Authentication
+                const actualLogicalPlayerId = board.players[board.currentPlayerIndex].id;
+                if (logicalPlayerId !== actualLogicalPlayerId && userId !== null) {
+                    console.log(`[LudoLoop] Turn violation: User ${userId} tried to play but it is ${actualLogicalPlayerId}'s turn.`);
+                    return;
                 }
 
                 // ... (Engine execution logic here ...)
                 let updatedBoard = { ...board };
                 if (action.type === 'ROLL_DICE') {
+                    if (!board.waitingForRoll) {
+                        console.log(`[LudoLoop] Ignored ROLL_DICE: Not waiting for roll.`);
+                        return;
+                    }
                     updatedBoard = ludoGameEngine.rollDice(updatedBoard);
                 } else if (action.type === 'MOVE_PIECE') {
-                    // (Validate and apply move)
+                    if (board.waitingForRoll) {
+                        console.log(`[LudoLoop] Ignored MOVE_PIECE: Must roll first.`);
+                        return;
+                    }
+
+                    const validMoves = ludoGameEngine.getValidMoves(board);
+                    const isValid = validMoves.some(m =>
+                        m.seedIndex === action.move.seedIndex &&
+                        m.targetPos === action.move.targetPos
+                    );
+                    if (!isValid) {
+                        console.log(`[LudoLoop] Ignored MOVE_PIECE: Invalid or duplicate move used.`);
+                        return;
+                    }
+
                     updatedBoard = ludoGameEngine.applyMove(updatedBoard, action.move);
                 } else if (action.type === 'PASS_TURN') {
+                    const validMoves = ludoGameEngine.getValidMoves(board);
+                    if (validMoves.length > 0) {
+                        console.log(`[LudoLoop] Ignored PASS_TURN: Player has valid moves available.`);
+                        return;
+                    }
                     updatedBoard = ludoGameEngine.passTurn(updatedBoard);
                 }
 
@@ -245,8 +272,11 @@ export const ludoGameLoop = {
 
                 broadcastGameState(gameId, 'gameStateUpdate', updatedBoard);
 
-                // If turn changed, restart timer
-                if (board.currentPlayerIndex !== updatedBoard.currentPlayerIndex) {
+                // If turn changed OR shifted between Roll/Move phases (eg rolled 6), restart timer
+                const turnChanged = board.currentPlayerIndex !== updatedBoard.currentPlayerIndex;
+                const phaseChanged = board.waitingForRoll !== updatedBoard.waitingForRoll;
+
+                if (turnChanged || phaseChanged) {
                     await ludoGameLoop.startTurnTimer(gameId, null);
                 }
 
