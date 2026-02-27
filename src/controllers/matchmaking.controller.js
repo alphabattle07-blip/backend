@@ -218,23 +218,28 @@ export const checkMatchmakingStatus = async (req, res) => {
 
         // 1. Check if a match was already found for this user in memory
         if (matchedGames.has(userId)) {
-            const { game } = matchedGames.get(userId);
-            // Deep clone to prevent mutating the stored version for other polling attempts
-            let clientGame = JSON.parse(JSON.stringify(game));
+            try {
+                const { game } = matchedGames.get(userId);
+                // Deep clone to prevent mutating the stored version for other polling attempts
+                let clientGame = JSON.parse(JSON.stringify(game));
 
-            if (clientGame.gameType === 'whot' && clientGame.board) {
-                clientGame.board = whotGameEngine.scrubStateForClient(clientGame.board, userId);
+                if (clientGame.gameType === 'whot' && clientGame.board) {
+                    clientGame.board = whotGameEngine.scrubStateForClient(clientGame.board, userId);
+                }
+
+                // Optional: delete from matchedGames so it doesn't linger forever, 
+                // but the client might poll a few extra times before unmounting. 
+                // The cleanup interval will catch it later.
+                return res.json({
+                    success: true,
+                    matched: true,
+                    game: clientGame,
+                    message: 'Match found!'
+                });
+            } catch (innerError) {
+                console.error(`[Matchmaking Error] Inner memory map extraction failed for user ${userId}:`, innerError);
+                throw innerError; // let outer catch grab it to 500
             }
-
-            // Optional: delete from matchedGames so it doesn't linger forever, 
-            // but the client might poll a few extra times before unmounting. 
-            // The cleanup interval will catch it later.
-            return res.json({
-                success: true,
-                matched: true,
-                game: clientGame,
-                message: 'Match found!'
-            });
         }
 
         // 2. Check if user is still in queue
