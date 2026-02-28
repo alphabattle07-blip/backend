@@ -185,6 +185,12 @@ export const getGame = async (req, res) => {
       if (snapshot) {
         game.board = snapshot;
       }
+    } else if (game.gameType === 'ludo') {
+      const userId = req.user.id;
+      const snapshot = await ludoGameLoop.getFullStateSnapshot(gameId, userId);
+      if (snapshot) {
+        game.board = snapshot;
+      }
     }
 
     res.json({
