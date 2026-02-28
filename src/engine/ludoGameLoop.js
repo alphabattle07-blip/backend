@@ -273,11 +273,11 @@ export const ludoGameLoop = {
 
                 broadcastGameState(gameId, 'gameStateUpdate', updatedBoard);
 
-                // If turn changed OR shifted between Roll/Move phases (eg rolled 6), restart timer
+                // Only restart timer if the turn passes to another player OR the current player earns a bonus roll
                 const turnChanged = board.currentPlayerIndex !== updatedBoard.currentPlayerIndex;
-                const phaseChanged = board.waitingForRoll !== updatedBoard.waitingForRoll;
+                const isBonusTurn = !board.waitingForRoll && updatedBoard.waitingForRoll && !turnChanged;
 
-                if (turnChanged || phaseChanged) {
+                if (turnChanged || isBonusTurn) {
                     await ludoGameLoop.startTurnTimer(gameId, null);
                 }
 
