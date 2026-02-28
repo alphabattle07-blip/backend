@@ -196,6 +196,7 @@ export const ludoGameLoop = {
                     const game = await prisma.game.findUnique({ where: { id: gameId } });
                     return game.player1Id === userId;
                 })();
+                const logicalPlayerId = isPlayer1 ? 'p1' : 'p2';
 
                 // Turn Authentication
                 const actualLogicalPlayerId = board.players[board.currentPlayerIndex].id;
