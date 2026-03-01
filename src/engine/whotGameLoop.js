@@ -165,7 +165,8 @@ export const whotGameLoop = {
         if (!entry) throw new Error("Match not found in memory");
 
         // Wait for previous operations (Locking)
-        entry.lock = entry.lock.then(async () => {
+        // Keep the queue moving even if a previous move threw an error
+        const currentExecution = entry.lock.then(async () => {
             entry.isLocked = true;
             try {
                 const state = entry.state;
@@ -237,7 +238,9 @@ export const whotGameLoop = {
             }
         });
 
-        return entry.lock;
+        // Ensure the queue doesn't permanently reject, but return the original promise to the caller
+        entry.lock = currentExecution.catch(() => { });
+        return currentExecution;
     },
 
     /**
@@ -305,7 +308,7 @@ export const whotGameLoop = {
         const entry = activeWhotGames.get(gameId);
         if (!entry) return;
 
-        entry.lock = entry.lock.then(async () => {
+        const currentExecution = entry.lock.then(async () => {
             entry.isLocked = true;
             try {
                 const state = entry.state;
@@ -380,6 +383,10 @@ export const whotGameLoop = {
                 entry.isLocked = false;
             }
         });
+
+        // Ensure the queue doesn't break
+        entry.lock = currentExecution.catch(() => { });
+        return currentExecution;
     },
 
     handleWin: async (gameId, winnerId, board) => {
