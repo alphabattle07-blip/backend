@@ -317,6 +317,14 @@ export const whotGameEngine = {
                     // ✅ DEFENSE SUCCESSFUL — penalty cancelled completely
                     console.log(`[Engine] DEFENSE: ${card.number} cancels penalty. Penalty cleared.`);
                     newState.pendingPenalty = null;
+
+                    // WIN CHECK — if defender played their last card, they win
+                    if (hand.length === 0) {
+                        newState.status = 'COMPLETED';
+                        newState.winnerId = playerId;
+                        return newState;
+                    }
+
                     newState.turnPlayer = opponentId; // Turn returns to the original attacker
                     return newState;
                 }
