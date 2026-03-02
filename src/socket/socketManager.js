@@ -1,6 +1,9 @@
 import { ludoGameLoop } from '../engine/ludoGameLoop.js';
 import { whotGameEngine } from '../engine/whotGameEngine.js';
 import { whotGameLoop } from '../engine/whotGameLoop.js';
+import { PrismaClient } from '../generated/prisma/index.js';
+
+const prisma = new PrismaClient();
 
 let io;
 // Map to track userId -> Set of socketIds (to handle multiple sessions/tabs)
@@ -84,6 +87,31 @@ export const initializeSocket = (socketIo) => {
             const updateData = data || state;
             if (gameId && updateData) {
                 socket.to(gameId).emit('gameStateUpdate', updateData);
+            }
+        });
+
+        // --- VOLUNTARY FORFEIT ---
+        socket.on('forfeitGame', async ({ gameId }) => {
+            const userId = socketUser.get(socket.id);
+            if (!userId || !gameId) return;
+
+            try {
+                console.log(`[Socket] Player ${userId} forfeiting game ${gameId}`);
+                const game = await prisma.game.findUnique({ where: { id: gameId } });
+                if (!game || game.status !== 'IN_PROGRESS') return;
+
+                // Verify the user is a participant
+                if (game.player1Id !== userId && game.player2Id !== userId) return;
+
+                if (game.gameType === 'ludo') {
+                    const logicalId = game.player1Id === userId ? 'p1' : 'p2';
+                    await ludoGameLoop.handleForfeit(gameId, logicalId);
+                } else if (game.gameType === 'whot') {
+                    await whotGameLoop.handleForfeit(gameId, userId);
+                }
+            } catch (err) {
+                console.error(`[Socket] Forfeit Error: ${err.message}`);
+                socket.emit('error', { message: 'Failed to forfeit game' });
             }
         });
 
