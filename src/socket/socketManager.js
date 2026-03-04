@@ -2,6 +2,7 @@ import { ludoGameLoop } from '../engine/ludoGameLoop.js';
 import { whotGameEngine } from '../engine/whotGameEngine.js';
 import { whotGameLoop } from '../engine/whotGameLoop.js';
 import { PrismaClient } from '../generated/prisma/index.js';
+import { initializeChatSocket } from '../chat/chatSocket.js';
 
 const prisma = new PrismaClient();
 
@@ -25,6 +26,9 @@ export const initializeSocket = (socketIo) => {
             userSockets.get(userId).add(socket.id);
             socketUser.set(socket.id, userId);
             console.log(`[Socket] Successfully registered user ${userId} to socket ${socket.id}`);
+
+            // Initialize chat handlers once user is registered to avoid unauthorized binds
+            initializeChatSocket(socket, socketUser);
         });
 
         socket.on('joinGame', (gameId) => {

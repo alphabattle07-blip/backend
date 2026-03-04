@@ -3,6 +3,7 @@ import { broadcastGameState, broadcastScrubbedState, broadcastOpponentMove } fro
 import { PrismaClient } from '../generated/prisma/index.js';
 import { whotGameEngine } from './whotGameEngine.js';
 import { processMatchRewards } from '../utils/gameUtils.js';
+import { chatRepository } from '../chat/chatRepository.js';
 
 const prisma = new PrismaClient();
 
@@ -407,6 +408,10 @@ export const whotGameLoop = {
             }
         });
         broadcastGameState(gameId, 'gameEnded', { winnerId });
+
+        // --- ARCHIVE CHAT ---
+        chatRepository.persistMatchChat(gameId);
+
         whotGameLoop.clearTurnTimer(gameId);
         activeWhotGames.delete(gameId);
         await redis.del(`match:${gameId}`);
@@ -444,6 +449,9 @@ export const whotGameLoop = {
             loserId: losingPlayerId,
             message: "Opponent timed out too many times."
         });
+
+        // --- ARCHIVE CHAT ---
+        chatRepository.persistMatchChat(gameId);
 
         whotGameLoop.clearTurnTimer(gameId);
         activeWhotGames.delete(gameId);

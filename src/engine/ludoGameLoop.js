@@ -4,6 +4,7 @@ import { PrismaClient } from '../generated/prisma/index.js';
 import { ludoGameEngine } from './ludoGameEngine.js';
 import { processMatchRewards } from '../utils/gameUtils.js';
 import redis from '../utils/redis.js';
+import { chatRepository } from '../chat/chatRepository.js';
 
 const prisma = new PrismaClient();
 
@@ -175,6 +176,10 @@ export const ludoGameLoop = {
         });
 
         broadcastGameState(gameId, 'gameEnded', { winnerId, reason: 'forfeit' });
+
+        // --- ARCHIVE CHAT ---
+        chatRepository.persistMatchChat(gameId);
+
         activeLudoGames.delete(gameId);
         await redis.del(`match:ludo:${gameId}`);
     },
@@ -263,6 +268,10 @@ export const ludoGameLoop = {
                     });
 
                     broadcastGameState(gameId, 'gameEnded', { winnerId });
+
+                    // --- ARCHIVE CHAT ---
+                    chatRepository.persistMatchChat(gameId);
+
                     activeLudoGames.delete(gameId);
                     await redis.del(`match:ludo:${gameId}`);
                     return;
