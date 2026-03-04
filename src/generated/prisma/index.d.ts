@@ -40,8 +40,10 @@ export type GameSession = $Result.DefaultSelection<Prisma.$GameSessionPayload>
 export namespace $Enums {
   export const GameStatus: {
   WAITING: 'WAITING',
+  MATCHED: 'MATCHED',
   IN_PROGRESS: 'IN_PROGRESS',
   COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
   ABANDONED: 'ABANDONED'
 };
 

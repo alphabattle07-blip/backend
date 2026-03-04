@@ -195,8 +195,10 @@ exports.Prisma.JsonNullValueFilter = {
 };
 exports.GameStatus = exports.$Enums.GameStatus = {
   WAITING: 'WAITING',
+  MATCHED: 'MATCHED',
   IN_PROGRESS: 'IN_PROGRESS',
   COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
   ABANDONED: 'ABANDONED'
 };
 

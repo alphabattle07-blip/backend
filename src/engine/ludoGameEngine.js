@@ -28,6 +28,10 @@ export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2) =
         log: ['Game Started'],
         level: level,
         stateVersion: 0,
+        readyPlayers: { p1: false, p2: false },
+        gameStartConfirmed: false,
+        countdownStarted: false,
+        matchStartDeadline: null,
     };
 };
 

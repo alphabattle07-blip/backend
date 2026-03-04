@@ -35,6 +35,18 @@ setInterval(async () => {
         const board = entry.state;
         if (!board || board.winner || entry.isLocked) continue;
 
+        // --- Match Ready Timeout Check ---
+        if (!board.gameStartConfirmed) {
+            if (board.matchStartDeadline && Date.now() > board.matchStartDeadline) {
+                if (entry.isLocked) continue;
+                entry.isLocked = true;
+                console.log(`[LudoLoop] Match ready timeout for game ${gameId}`);
+                await ludoGameLoop.cancelMatchAndRefund(gameId);
+                continue; // entry is deleted inside cancel
+            }
+            continue; // Skip turn timer checks until game is confirmed
+        }
+
         const now = Date.now();
         const elapsed = now - board.turnStartTime;
         const limits = board.level >= 3 ? TIME_LIMITS.RULE_ONE : TIME_LIMITS.RULE_TWO;
@@ -338,5 +350,135 @@ export const ludoGameLoop = {
             remainingTime: remaining,
             serverTime: Date.now()
         };
+    },
+
+    /**
+     * Register a newly matched game into memory without starting the turn timer.
+     * Sets matchStartDeadline for 30-second ready timeout.
+     */
+    registerPendingGame: async (gameId) => {
+        // Fetch game record from DB for both board state and player UUIDs
+        const game = await prisma.game.findUnique({ where: { id: gameId } });
+        if (!game) return;
+
+        // Load game state from Redis or DB
+        const cached = await redis.get(`match:ludo:${gameId}`);
+        let gameState = null;
+
+        if (cached) {
+            gameState = JSON.parse(cached);
+        } else {
+            gameState = typeof game.board === 'string' ? JSON.parse(game.board) : game.board;
+        }
+
+        // Set the match start deadline (30 seconds to ready up)
+        gameState.matchStartDeadline = Date.now() + 30000;
+        await redis.set(`match:ludo:${gameId}`, JSON.stringify(gameState));
+
+        const entry = {
+            state: gameState,
+            lock: Promise.resolve(),
+            isLocked: false,
+            autoRolled: false,
+            player1UserId: game.player1Id || null,
+            player2UserId: game.player2Id || null
+        };
+        activeLudoGames.set(gameId, entry);
+        console.log(`[LudoLoop] Registered pending game ${gameId}, waiting for MATCH_READY`);
+    },
+
+    /**
+     * Handle a player signaling they are ready.
+     * Race-condition safe via entry.isLocked.
+     */
+    handleMatchReady: async (gameId, userId) => {
+        const entry = activeLudoGames.get(gameId);
+        if (!entry) return;
+
+        if (entry.isLocked) return; // Prevents race condition
+        entry.isLocked = true;
+
+        try {
+            const board = entry.state;
+
+            if (board.gameStartConfirmed) return;
+
+            // Validate user from stored player UUIDs (no DB call)
+            let logicalId = null;
+            if (userId === entry.player1UserId) logicalId = 'p1';
+            else if (userId === entry.player2UserId) logicalId = 'p2';
+            else return; // Not a participant
+
+            board.readyPlayers[logicalId] = true;
+            console.log(`[LudoLoop] Player ${logicalId} (${userId}) ready in game ${gameId}`);
+
+            await redis.set(`match:ludo:${gameId}`, JSON.stringify(board));
+
+            const allReady = board.readyPlayers.p1 && board.readyPlayers.p2;
+            if (!allReady) return;
+
+            if (board.countdownStarted) return; // Double-start guard
+
+            board.countdownStarted = true;
+            console.log(`[LudoLoop] Both players ready in game ${gameId}, starting countdown`);
+
+            broadcastGameState(gameId, 'matchCountdown', { seconds: 3 });
+
+            setTimeout(async () => {
+                const latestEntry = activeLudoGames.get(gameId);
+                if (!latestEntry) return;
+
+                const latestBoard = latestEntry.state;
+                if (latestBoard.gameStartConfirmed) return;
+
+                latestBoard.gameStartConfirmed = true;
+
+                // Transition DB status from MATCHED to IN_PROGRESS
+                await prisma.game.update({
+                    where: { id: gameId },
+                    data: { status: 'IN_PROGRESS' }
+                });
+
+                await redis.set(`match:ludo:${gameId}`, JSON.stringify(latestBoard));
+
+                await ludoGameLoop.startTurnTimer(gameId, null);
+                console.log(`[LudoLoop] Game ${gameId} officially started`);
+            }, 3000);
+
+        } finally {
+            entry.isLocked = false;
+        }
+    },
+
+    /**
+     * Cancel a match that failed the ready handshake.
+     * Checks DB status to prevent double-refund.
+     */
+    cancelMatchAndRefund: async (gameId) => {
+        const game = await prisma.game.findUnique({ where: { id: gameId } });
+
+        if (!game || game.status !== 'MATCHED') {
+            // Already transitioned or doesn't exist - just clean up memory
+            activeLudoGames.delete(gameId);
+            await redis.del(`match:ludo:${gameId}`);
+            return;
+        }
+
+        await prisma.game.update({
+            where: { id: gameId },
+            data: {
+                status: 'CANCELLED',
+                endedAt: new Date()
+            }
+        });
+
+        broadcastGameState(gameId, 'matchCancelled', {
+            reason: 'Player failed to ready up'
+        });
+
+        console.log(`[LudoLoop] Match ${gameId} cancelled - ready timeout`);
+        activeLudoGames.delete(gameId);
+        await redis.del(`match:ludo:${gameId}`);
     }
 };
+

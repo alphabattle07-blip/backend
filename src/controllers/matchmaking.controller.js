@@ -124,7 +124,7 @@ export const startMatchmaking = async (req, res) => {
                         gameType,
                         player1Id: bestMatch.userId, // The player who was waiting
                         player2Id: userId, // The player who just joined
-                        status: 'IN_PROGRESS',
+                        status: 'MATCHED',
                         ...gameData,
                         startedAt: new Date()
                     },
@@ -134,8 +134,8 @@ export const startMatchmaking = async (req, res) => {
                     }
                 });
 
-                // --- LUDO TIMER START ---
-                ludoGameLoop.startTurnTimer(game.id, game.player1Id);
+                // --- LUDO: Register game, wait for MATCH_READY handshake ---
+                ludoGameLoop.registerPendingGame(game.id);
             }
 
             // For the pending opponent who is polling, we MUST store an unscrubbed generic state 
@@ -311,7 +311,7 @@ export const checkMatchmakingStatus = async (req, res) => {
                         gameType,
                         player1Id: userId,
                         player2Id: bestMatch.userId,
-                        status: 'IN_PROGRESS',
+                        status: 'MATCHED',
                         ...gameData,
                         startedAt: new Date()
                     },
@@ -321,8 +321,8 @@ export const checkMatchmakingStatus = async (req, res) => {
                     }
                 });
 
-                // --- LUDO TIMER START ---
-                ludoGameLoop.startTurnTimer(game.id, game.player1Id);
+                // --- LUDO: Register game, wait for MATCH_READY handshake ---
+                ludoGameLoop.registerPendingGame(game.id);
             }
 
             // Save matched game to memory for the other player who is polling (User 2 in this case)

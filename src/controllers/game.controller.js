@@ -77,7 +77,7 @@ export const joinGame = async (req, res) => {
     // Update game with player 2
     const updateData = {
       player2Id: userId,
-      status: 'IN_PROGRESS',
+      status: game.gameType === 'ludo' ? 'MATCHED' : 'IN_PROGRESS',
       startedAt: new Date(),
     };
 
@@ -107,7 +107,7 @@ export const joinGame = async (req, res) => {
 
     // START GAME TIMER
     if (game.gameType === 'ludo') {
-      ludoGameLoop.startTurnTimer(gameId, updatedGame.player1Id);
+      ludoGameLoop.registerPendingGame(gameId);
     } else if (game.gameType === 'whot') {
       whotGameLoop.startTurnTimer(gameId, updatedGame.currentTurn);
     }

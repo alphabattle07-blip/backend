@@ -113,7 +113,9 @@ model GameSession {
 
 enum GameStatus {
   WAITING
+  MATCHED
   IN_PROGRESS
   COMPLETED
+  CANCELLED
   ABANDONED
 }
