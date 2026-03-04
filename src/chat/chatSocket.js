@@ -34,10 +34,10 @@ const sanitizeMessage = (message) => {
         .trim();
 };
 
-export const initializeChatSocket = (socket, socketUser) => {
+export const initializeChatSocket = (socket, socketUserMap) => {
     // Client joins the specific match chat room
     socket.on('join_match_chat', async (matchId) => {
-        const userId = socketUser.get(socket.id);
+        const userId = socketUserMap.get(socket.id);
         if (!userId) return;
 
         const roomName = `chat:${matchId}`;
@@ -58,16 +58,24 @@ export const initializeChatSocket = (socket, socketUser) => {
 
     // Client sends a message
     socket.on('send_match_message', async (payload) => {
-        const userId = socketUser.get(socket.id);
-        if (!userId) return;
+        const userId = socketUserMap.get(socket.id);
+        if (!userId) {
+            console.log(`[Chat Socket] Send message blocked. Unknown socket ${socket.id}`);
+            return;
+        }
 
         const { matchId, message } = payload;
 
         // 1. Validate presence
         if (!matchId || !message) return;
 
-        // 2. Format & Sanitize
-        const cleanMessage = sanitizeMessage(message);
+        // 2. Format & Sanitize 
+        let cleanMessage = message;
+        if (typeof message === 'string') {
+            cleanMessage = message.replace(/</g, "&lt;").replace(/>/g, "&gt;").trim();
+        } else {
+            return;
+        }
 
         // 3. Prevent empty messages
         if (cleanMessage.length === 0) return;
@@ -89,6 +97,7 @@ export const initializeChatSocket = (socket, socketUser) => {
         const roomName = `chat:${matchId}`;
 
         const chatPayload = {
+            id: `${Date.now()}-${userId}`,
             senderId: userId,
             message: cleanMessage,
             timestamp: new Date().toISOString()
@@ -100,7 +109,7 @@ export const initializeChatSocket = (socket, socketUser) => {
         const io = getIO();
         io.to(roomName).emit('receive_match_message', chatPayload);
 
-        console.log(`[Chat Socket] Message broadcasted in ${roomName} from ${userId}`);
+        console.log(`[Chat Socket] Message broadcasted in ${roomName} from ${userId}: ${cleanMessage}`);
     });
 
     // Optional: Leave chat explicitly (usually handled by socket disconnect, but good for cleanup)
