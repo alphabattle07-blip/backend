@@ -1,0 +1,73 @@
+﻿node : Error altering 
+type: PrismaClientIniti
+alizationError: 
+At line:1 char:155
++ ... m:6543/postgres?p
+gbouncer=true"; node 
+add_enum.js > 
+add_enum.log 2>&1
++                      
+                ~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (Error alterin   
+ g ...lizationError    
+: :String) [], Rem    
+oteException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+Invalid `prisma.$execut
+eRawUnsafe()` 
+invocation:
+
+
+Can't reach database 
+server at `aws-1-eu-cen
+tral-1.pooler.supabase.
+com:6543`
+
+Please make sure your 
+database server is 
+running at `aws-1-eu-ce
+ntral-1.pooler.supabase
+.com:6543`.
+    at 
+ei.handleRequestError (
+D:\Document\react-nativ
+e-work\new ALpha-battle
+\backend\src\generated\
+prisma\runtime\library.
+js:124:7583)
+    at ei.handleAndLogR
+equestError (D:\Documen
+t\react-native-work\new
+ ALpha-battle\backend\s
+rc\generated\prisma\run
+time\library.js:124:660
+8)
+    at ei.request (D:\D
+ocument\react-native-wo
+rk\new ALpha-battle\bac
+kend\src\generated\pris
+ma\runtime\library.js:1
+24:6315)
+    at async a (D:\Docu
+ment\react-native-work\
+new ALpha-battle\backen
+d\src\generated\prisma\
+runtime\library.js:133:
+9551)
+    at async main (file
+:///D:/Document/react-n
+ative-work/new%20ALpha-
+battle/backend/add_enum
+.js:5:9) {
+  clientVersion: 
+'6.15.0',
+  errorCode: undefined,
+  retryable: undefined
+}

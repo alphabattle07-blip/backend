@@ -1,0 +1,32 @@
+﻿npx : Environment 
+variables loaded from 
+.env
+At line:1 char:1
++ npx prisma db push > 
+prisma_push.log 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (Environment v   
+ ariables loaded fr    
+om .env:String) []    
+, RemoteException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "postgres", schema "public" at "aws-1-eu-central-1.pooler.supabase.com:5432"
+
+Error: P1001: Can't 
+reach database server 
+at `aws-1-eu-central-1.
+pooler.supabase.com:543
+2`
+
+Please make sure your 
+database server is 
+running at `aws-1-eu-ce
+ntral-1.pooler.supabase
+.com:5432`.

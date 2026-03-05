@@ -1,0 +1,11 @@
+PrismaClientUnknownRequestError: 
+Invalid `prisma.game.create()` invocation:
+
+
+Error occurred during query execution:
+ConnectorError(ConnectorError { user_facing_error: None, kind: QueryError(PostgresError { code: "22P02", message: "invalid input value for enum \"GameStatus\": \"MATCHED\"", severity: "ERROR", detail: None, column: None, hint: None }), transient: false })
+    at ei.handleRequestError (D:\Document\react-native-work\new ALpha-battle\backend\src\generated\prisma\runtime\library.js:124:7473)
+    at ei.handleAndLogRequestError (D:\Document\react-native-work\new ALpha-battle\backend\src\generated\prisma\runtime\library.js:124:6608)
+    at ei.request (D:\Document\react-native-work\new ALpha-battle\backend\src\generated\prisma\runtime\library.js:124:6315)
+    at async a (D:\Document\react-native-work\new ALpha-battle\backend\src\generated\prisma\runtime\library.js:133:9551)
+    at async startMatchmaking (file:///D:/Document/react-native-work/new%20ALpha-battle/backend/src/controllers/matchmaking.controller.js:122:24)

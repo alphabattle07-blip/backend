@@ -1,0 +1,70 @@
+﻿
+> backend@1.0.0 dev
+> node --watch src/index.js
+
+[dotenv@17.2.2] injecting env (0) from .env -- tip: ÔÜÖ´©Å  enable debug logging with { debug: true }
+ÔÜá´©Å [Redis] Using In-Memory Fallback (Local Storage)
+[dotenv@17.2.2] injecting env (0) from .env -- tip: ­ƒöÉ encrypt with Dotenvx: https://dotenvx.com
+[WhotLoop] Recovering matches from Redis...
+[WhotLoop] Recovered 0 matches.
+npm : node:events:502
+At line:1 char:1
++ npm run dev > 
+server.log 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~
+    + CategoryInfo     
+         : NotSpecifi  
+  ed: (node:events:5   
+ 02:String) [], Rem    
+oteException
+    + FullyQualifiedEr 
+   rorId : NativeComm  
+  andError
+ 
+      throw er; // 
+Unhandled 'error' event
+      ^
+
+Error: listen 
+EADDRINUSE: address 
+already in use :::3000
+    at Server.setupList
+enHandle [as _listen2] 
+(node:net:1908:16)
+    at listenInCluster 
+(node:net:1965:12)
+    at Server.listen 
+(node:net:2067:7)
+    at file:///D:/Docum
+ent/react-native-work/n
+ew%20ALpha-battle/backe
+nd/src/index.js:53:12
+    at ModuleJob.run (n
+ode:internal/modules/es
+m/module_job:325:25)
+    at async 
+ModuleLoader.import (no
+de:internal/modules/esm
+/loader:606:24)
+    at async asyncRunEn
+tryPointWithESMLoader (
+node:internal/modules/r
+un_main:117:5)
+Emitted 'error' event 
+on Server instance at:
+    at emitErrorNT 
+(node:net:1944:8)
+    at process.processT
+icksAndRejections (node
+:internal/process/task_
+queues:82:21) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}
+
+Node.js v20.20.0
+Failed running 'src/index.js'
