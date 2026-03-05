@@ -403,6 +403,10 @@ export const ludoGameLoop = {
 
             if (board.gameStartConfirmed) return;
 
+            if (!board.readyPlayers) {
+                board.readyPlayers = { p1: false, p2: false };
+            }
+
             // Validate user from stored player UUIDs (no DB call)
             let logicalId = null;
             if (userId === entry.player1UserId) logicalId = 'p1';

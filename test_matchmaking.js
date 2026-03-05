@@ -13,7 +13,9 @@ async function testMatchmaking() {
             })
         });
         const user1 = await user1Resp.json();
+        console.log('User 1 Register Response:', user1);
         const token1 = user1.token;
+        if (!token1) return;
 
         console.log('Registering user 2...');
         const user2Resp = await fetch(`${API_URL}/auth/register`, {
