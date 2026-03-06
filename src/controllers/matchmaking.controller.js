@@ -217,7 +217,9 @@ export const checkMatchmakingStatus = async (req, res) => {
         const { gameType } = req.query;
 
         // 1. Check if a match was already found for this user in memory
+        console.log(`[Matchmaking Polling] User ${userId} checking status for ${gameType}`);
         if (matchedGames.has(userId)) {
+            console.log(`[Matchmaking Polling] Match found in memory for User ${userId}! extracted game`);
             try {
                 const { game } = matchedGames.get(userId);
                 // Deep clone to prevent mutating the stored version for other polling attempts
@@ -244,6 +246,7 @@ export const checkMatchmakingStatus = async (req, res) => {
 
         // 2. Check if user is still in queue
         if (!matchmakingQueue.has(userId)) {
+            console.log(`[Matchmaking Polling] User ${userId} not in queue and no match in memory. Returning matched: false, inQueue: false`);
             return res.json({
                 success: true,
                 matched: false,
