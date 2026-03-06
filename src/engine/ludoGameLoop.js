@@ -356,9 +356,9 @@ export const ludoGameLoop = {
      * Register a newly matched game into memory without starting the turn timer.
      * Sets matchStartDeadline for 30-second ready timeout.
      */
-    registerPendingGame: async (gameId) => {
-        // Fetch game record from DB for both board state and player UUIDs
-        const game = await prisma.game.findUnique({ where: { id: gameId } });
+    registerPendingGame: async (gameId, gameRecord = null) => {
+        // Fetch game record from DB for both board state and player UUIDs if not provided
+        const game = gameRecord || await prisma.game.findUnique({ where: { id: gameId } });
         if (!game) return;
 
         // Load game state from Redis or DB
@@ -384,7 +384,7 @@ export const ludoGameLoop = {
             player2UserId: game.player2Id || null
         };
         activeLudoGames.set(gameId, entry);
-        console.log(`[LudoLoop] Registered pending game ${gameId}, waiting for MATCH_READY`);
+        console.log(`[LudoLoop] Registered pending game ${gameId}, waiting for MATCH_READY with p1:${game.player1Id}, p2:${game.player2Id}`);
     },
 
     /**

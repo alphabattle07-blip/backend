@@ -135,7 +135,7 @@ export const startMatchmaking = async (req, res) => {
                 });
 
                 // --- LUDO: Register game, wait for MATCH_READY handshake ---
-                ludoGameLoop.registerPendingGame(game.id);
+                await ludoGameLoop.registerPendingGame(game.id, game);
             }
 
             // For the pending opponent who is polling, we MUST store an unscrubbed generic state 
