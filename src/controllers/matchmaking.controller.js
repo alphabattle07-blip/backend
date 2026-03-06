@@ -71,6 +71,12 @@ export const startMatchmaking = async (req, res) => {
             matchmakingQueue.delete(userId);
         }
 
+        // Check if user has a stale matched game
+        if (matchedGames.has(userId)) {
+            console.log(`User ${userId} has a stale matched game in memory, removing it`);
+            matchedGames.delete(userId);
+        }
+
 
         // Try to find an existing match
         const bestMatch = findBestMatch(user.rating, gameType, userId);
