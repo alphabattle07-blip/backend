@@ -43,15 +43,7 @@ export const chatRedis = {
             // Real Redis logic using pipeline for atomicity
             const pipeline = redis.pipeline();
 
-            // Append message to the end of the list
-            pipeline.rpush(key, value);
-
-            // Keep only the newest MAX_MESSAGES (negative indices count from end)
-            // LTRIM list -100 -1 keeps the last 100 elements. 
-            // NOTE: Requirement says LPUSH, but chronological order usually dictates RPUSH
-            // We use RPUSH so new messages go to the end, LRANGE 0 -1 returns oldest first.
-            // If using LPUSH, new messages go to the start, and we'd LTRIM 0 99.
-            // Adjusting to LPUSH based on prompt requirement:
+            // Prepend message to list (newest first in Redis, reversed on read)
             pipeline.lpush(key, value);
             pipeline.ltrim(key, 0, MAX_MESSAGES - 1);
 

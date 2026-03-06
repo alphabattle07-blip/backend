@@ -173,7 +173,6 @@ export const startMatchmaking = async (req, res) => {
         }
     } catch (error) {
         console.error('Matchmaking error:', error);
-        import('fs').then(fs => fs.writeFileSync('matchmaking_error.txt', error.stack || error.message));
         res.status(500).json({
             success: false,
             message: 'Matchmaking failed'
