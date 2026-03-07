@@ -57,13 +57,6 @@ export const initializeSocket = (socketIo) => {
             }
         });
 
-        // --- MATCH READY HANDSHAKE ---
-        socket.on('MATCH_READY', async ({ gameId }) => {
-            const userId = socketUser.get(socket.id);
-            if (!userId || !gameId) return;
-            console.log(`[Socket] MATCH_READY from ${userId} for game ${gameId}`);
-            await ludoGameLoop.handleMatchReady(gameId, userId);
-        });
 
         socket.on('gameAction', async (payload) => {
             const { gameId, state, data, gameType } = payload;

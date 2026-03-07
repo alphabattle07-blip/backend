@@ -72,10 +72,7 @@ export const initializeGameData = (gameType, player1, player2) => {
             waitingForRoll: true,
             winner: null,
             log: ['Game Started'],
-            level: level,
-            readyPlayers: { p1: false, p2: false },
-            gameStartConfirmed: false,
-            countdownStarted: false
+            level: level
         };
         updateData.currentTurn = player1.id;
     } else if (gameType === 'whot') {
