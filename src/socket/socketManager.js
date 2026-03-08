@@ -16,7 +16,9 @@ export const initializeSocket = (socketIo) => {
     io = socketIo;
 
     io.on('connection', (socket) => {
-        console.log(`[Socket] New connection: ${socket.id}`);
+        // Initialize chat handlers once per connection (instead of inside register)
+        // to prevent listener accumulation on match join.
+        initializeChatSocket(socket, socketUser);
 
         // In a real app, verify token and get userId
         // For now, we expect 'register' event after connection
@@ -26,9 +28,6 @@ export const initializeSocket = (socketIo) => {
             userSockets.get(userId).add(socket.id);
             socketUser.set(socket.id, userId);
             console.log(`[Socket] Successfully registered user ${userId} to socket ${socket.id}`);
-
-            // Initialize chat handlers once user is registered to avoid unauthorized binds
-            initializeChatSocket(socket, socketUser);
         });
 
         socket.on('joinGame', (gameId) => {
