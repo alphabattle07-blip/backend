@@ -82,9 +82,6 @@ export const startMatchmaking = async (req, res) => {
         const bestMatch = findBestMatch(user.rating, gameType, userId);
 
         if (bestMatch) {
-            // Found a match! Remove from queue and create game
-            matchmakingQueue.delete(bestMatch.userId);
-
             // Get opponent details
             const opponent = await prisma.user.findUnique({
                 where: { id: bestMatch.userId },
@@ -143,6 +140,11 @@ export const startMatchmaking = async (req, res) => {
                 // Instantly start the turn timer with a buffer to safely bypass MATCH_READY handshake issues
                 await ludoGameLoop.startTurnTimer(game.id, null, { initialBuffer: 3500 });
             }
+
+            // --- RACE CONDITION SAFETY ---
+            // Only delete from queue AFTER game is created. If we delete before Prisma is done, 
+            // the other player's polling interval might hit during that 50ms window and crash out.
+            matchmakingQueue.delete(bestMatch.userId);
 
             // For the pending opponent who is polling, we MUST store an unscrubbed generic state 
             // so their poll request can scrub it for their specific userId later
@@ -266,10 +268,6 @@ export const checkMatchmakingStatus = async (req, res) => {
         const bestMatch = findBestMatch(queueData.rating, gameType, userId);
 
         if (bestMatch) {
-            // Found a match! Remove both from queue and create game
-            matchmakingQueue.delete(userId);
-            matchmakingQueue.delete(bestMatch.userId);
-
             // Get both players' full details to initialize the game
             const [user, opponent] = await Promise.all([
                 prisma.user.findUnique({
@@ -333,6 +331,12 @@ export const checkMatchmakingStatus = async (req, res) => {
                 // Instantly start the turn timer to bypass MATCH_READY handshake
                 await ludoGameLoop.startTurnTimer(game.id, null);
             }
+
+            // --- RACE CONDITION SAFETY ---
+            // Only delete from queue AFTER game is created. If we delete before Prisma is done,
+            // the other player's polling interval might hit during that 50ms window and crash out.
+            matchmakingQueue.delete(userId);
+            matchmakingQueue.delete(bestMatch.userId);
 
             // Save matched game to memory for the other player who is polling (User 2 in this case)
             matchedGames.set(bestMatch.userId, { game: JSON.parse(JSON.stringify(game)), timestamp: Date.now() });
