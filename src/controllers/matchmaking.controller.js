@@ -140,8 +140,8 @@ export const startMatchmaking = async (req, res) => {
                     }
                 });
 
-                // Instantly start the turn timer to bypass MATCH_READY handshake
-                await ludoGameLoop.startTurnTimer(game.id, null);
+                // Instantly start the turn timer with a buffer to safely bypass MATCH_READY handshake issues
+                await ludoGameLoop.startTurnTimer(game.id, null, { initialBuffer: 3500 });
             }
 
             // For the pending opponent who is polling, we MUST store an unscrubbed generic state 

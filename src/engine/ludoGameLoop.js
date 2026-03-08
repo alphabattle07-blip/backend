@@ -59,8 +59,11 @@ setInterval(async () => {
 export const ludoGameLoop = {
     /**
      * Start/Reset turn timer
+     * @param {string} gameId
+     * @param {string|null} currentPlayerUserId 
+     * @param {object} options Optional settings e.g. { initialBuffer: Number }
      */
-    startTurnTimer: async (gameId, currentPlayerUserId) => {
+    startTurnTimer: async (gameId, currentPlayerUserId, options = {}) => {
         // Fetch or create entry
         let entry = activeLudoGames.get(gameId);
         if (!entry) {
@@ -90,8 +93,9 @@ export const ludoGameLoop = {
 
         const board = entry.state;
         const limits = board.level >= 3 ? TIME_LIMITS.RULE_ONE : TIME_LIMITS.RULE_TWO;
+        const startBuffer = options.initialBuffer || 0;
 
-        board.turnStartTime = Date.now();
+        board.turnStartTime = Date.now() + startBuffer;
         board.turnDuration = limits.TOTAL;
         board.yellowAt = board.turnStartTime + limits.YELLOW;
         board.redAt = board.turnStartTime + limits.RED;
@@ -104,6 +108,7 @@ export const ludoGameLoop = {
         broadcastGameState(gameId, 'turnStarted', {
             whoseTurn: board.players[board.currentPlayerIndex].id,
             timeLimit: limits.TOTAL,
+            turnStartTime: board.turnStartTime,
             yellowAt: board.yellowAt,
             redAt: board.redAt,
             serverTime: Date.now()
