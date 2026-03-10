@@ -258,7 +258,7 @@ export const ludoGameLoop = {
                 // --- CHECK FOR WINNER ---
                 const game = await prisma.game.findUnique({ where: { id: gameId } });
                 if (updatedBoard.winner && game) {
-                    const winnerLogicalId = updatedBoard.winner.id; // 'p1' or 'p2'
+                    const winnerLogicalId = updatedBoard.winner; // already a string: 'p1' or 'p2'
                     const winnerId = winnerLogicalId === 'p1' ? game.player1Id : game.player2Id;
                     const loserId = winnerLogicalId === 'p1' ? game.player2Id : game.player1Id;
 
