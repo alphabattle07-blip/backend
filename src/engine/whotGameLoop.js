@@ -114,8 +114,10 @@ export const whotGameLoop = {
             // Reconstruct from Redis
             const cached = await redis.get(`match:${gameId}`);
             if (cached) {
+                const parsed = JSON.parse(cached);
+                parsed.processedMoves = parsed.processedMoves || []; // Re-init after Redis strip
                 entry = {
-                    state: JSON.parse(cached),
+                    state: parsed,
                     timers: {},
                     lock: Promise.resolve(),
                     isLocked: false
@@ -277,6 +279,7 @@ export const whotGameLoop = {
             const cached = await redis.get(key);
             if (cached) {
                 const state = JSON.parse(cached);
+                state.processedMoves = state.processedMoves || []; // Re-init after Redis strip
                 const entry = {
                     state,
                     timers: {},

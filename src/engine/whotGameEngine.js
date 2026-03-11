@@ -233,7 +233,18 @@ export const whotGameEngine = {
      * Apply a move and return the new state
      */
     applyMove: (matchState, playerId, move) => {
-        const newState = JSON.parse(JSON.stringify(matchState));
+        // Targeted shallow copy — avoids deep-copying the entire discardPile/market on every move
+        const newState = {
+            ...matchState,
+            discardPile: [...matchState.discardPile],
+            market: [...matchState.market],
+            playerHands: {
+                [matchState.players[0]]: [...matchState.playerHands[matchState.players[0]]],
+                [matchState.players[1]]: [...matchState.playerHands[matchState.players[1]]]
+            },
+            processedMoves: [...(matchState.processedMoves || [])],
+            timeoutCount: { ...matchState.timeoutCount },
+        };
         const ruleVersion = newState.ruleVersion || "rule1";
         const opponentId = newState.players.find(id => id !== playerId);
         const hand = newState.playerHands[playerId];
@@ -245,7 +256,7 @@ export const whotGameEngine = {
         if (move.moveId) {
             newState.lastMoveId = move.moveId;
             newState.processedMoves.push(move.moveId);
-            if (newState.processedMoves.length > 50) newState.processedMoves.shift();
+            if (newState.processedMoves.length > 20) newState.processedMoves.shift();
         }
 
         // ────────────────────────────────────────
@@ -349,6 +360,7 @@ export const whotGameEngine = {
                             cardNumber: 2,
                             targetId: opponentId
                         };
+                        newState.continuationState = null; // Bug 4 fix: clear continuation when initiating new penalty
                         nextTurnPlayer = opponentId;
                         break;
 
@@ -360,6 +372,7 @@ export const whotGameEngine = {
                             cardNumber: 5,
                             targetId: opponentId
                         };
+                        newState.continuationState = null; // Bug 4 fix: clear continuation when initiating new penalty
                         nextTurnPlayer = opponentId;
                         break;
 
@@ -377,6 +390,15 @@ export const whotGameEngine = {
                     case SPECIAL_NUMBERS.WHOT: // 20
                         newState.calledSuit = move.calledSuit || 'circle';
                         nextTurnPlayer = opponentId;
+                        break;
+
+                    default:
+                        // Bug 3 fix: Clear continuation state when a NON-SPECIAL card is played in Rule 1
+                        // Without this, continuationState lingers after General Market / Hold On chains,
+                        // causing wrong validation paths on subsequent turns.
+                        if (newState.continuationState && newState.continuationState.active && newState.continuationState.playerId === playerId) {
+                            newState.continuationState = null;
+                        }
                         break;
                 }
             }
@@ -432,7 +454,11 @@ export const whotGameEngine = {
                 return newState;
             }
 
-            newState.turnPlayer = nextTurnPlayer;
+            // Bug 5 fix: Only set next turn player if game is still in progress
+            // (prevents brief "zombie turn" state after win)
+            if (newState.status !== 'COMPLETED') {
+                newState.turnPlayer = nextTurnPlayer;
+            }
             return newState;
         }
 
