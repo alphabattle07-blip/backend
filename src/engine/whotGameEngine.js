@@ -592,15 +592,38 @@ export const whotGameEngine = {
         if (matchState.continuationState && matchState.continuationState.active && matchState.continuationState.playerId === turnPlayer) {
             // Try to find a valid continuation card (matching suit/number or 2/14)
             const validCards = hand.filter(card => {
+                if (ruleVersion === "rule1" && card.number === SPECIAL_NUMBERS.WHOT) return true;
                 if (card.number === SPECIAL_NUMBERS.PICK_TWO || card.number === SPECIAL_NUMBERS.GENERAL_MARKET) return true;
                 return card.suit === topCard.suit || card.number === topCard.number;
             });
 
             if (validCards.length > 0) {
-                // Prefer non-special
-                const nonSpecial = validCards.filter(c => !RULE2_SPECIALS.has(c.number));
-                const cardToPlay = nonSpecial.length > 0 ? nonSpecial[0] : validCards[0];
-                return whotGameEngine.applyMove(matchState, turnPlayer, { type: 'PLAY_CARD', cardId: cardToPlay.id });
+                // Prefer non-special cards
+                const specialSet = ruleVersion === "rule2" ? RULE2_SPECIALS : RULE1_SPECIALS;
+                const nonSpecial = validCards.filter(c => !specialSet.has(c.number));
+                let cardToPlay;
+                
+                if (nonSpecial.length > 0) {
+                    cardToPlay = nonSpecial[0];
+                } else {
+                    if (ruleVersion === "rule1") {
+                        const notTwenty = validCards.filter(c => c.number !== SPECIAL_NUMBERS.WHOT);
+                        cardToPlay = notTwenty.length > 0 ? notTwenty[0] : validCards[0];
+                    } else {
+                        cardToPlay = validCards[0];
+                    }
+                }
+
+                if (cardToPlay) {
+                    const move = { type: 'PLAY_CARD', cardId: cardToPlay.id };
+                    // For Whot card (Rule 1), pick the most common suit in hand
+                    if (cardToPlay.number === SPECIAL_NUMBERS.WHOT) {
+                        const suits = {};
+                        hand.forEach(c => { if (c.suit !== 'whot') suits[c.suit] = (suits[c.suit] || 0) + 1; });
+                        move.calledSuit = Object.keys(suits).reduce((a, b) => suits[a] > suits[b] ? a : b, 'circle');
+                    }
+                    return whotGameEngine.applyMove(matchState, turnPlayer, move);
+                }
             }
 
             // No valid card — draw to end continuation
