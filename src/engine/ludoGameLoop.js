@@ -13,19 +13,19 @@ const prisma = new PrismaClient();
 const activeLudoGames = new Map();
 
 const TIME_LIMITS = {
-    RULE_ONE: { // Warrior mode (user prompt specifically said Rule One is Warrior/25s)
-        TOTAL: 25000,
-        YELLOW: 10000,
-        AUTO_ROLL: 15000,
-        RED: 20000,
-        FORFEIT: 5
+    RULE_ONE: { // Competitive level
+        TOTAL: 30000,
+        YELLOW: 20000, // Align with red to skip yellow
+        AUTO_ROLL: 10000, // Auto-roll if dice not thrown within 10s
+        RED: 20000, // Warning state starts at 20s
+        FORFEIT: 3 // Game over after 3 timeouts
     },
-    RULE_TWO: { // 19s
-        TOTAL: 19000,
-        YELLOW: 7000,
-        AUTO_ROLL: 10000,
-        RED: 14000,
-        FORFEIT: 3
+    RULE_TWO: { // Standard level
+        TOTAL: 30000,
+        YELLOW: 20000, // Align with red to skip yellow
+        AUTO_ROLL: 10000, // Auto-roll if dice not thrown within 10s
+        RED: 20000, // Warning state starts at 20s
+        FORFEIT: 5 // Game over after 5 timeouts
     }
 };
 
