@@ -1,4 +1,5 @@
 import { ludoGameLoop } from '../engine/ludoGameLoop.js';
+import { ludoGameEngine } from '../engine/ludoGameEngine.js';
 import { whotGameEngine } from '../engine/whotGameEngine.js';
 import { whotGameLoop } from '../engine/whotGameLoop.js';
 import { PrismaClient } from '../generated/prisma/index.js';
@@ -48,7 +49,8 @@ export const initializeSocket = (socketIo) => {
                     console.log(`[Socket] Recovering Ludo game ${gameId} for user ${userId}`);
                     const state = await ludoGameLoop.getFullStateSnapshot(gameId, userId);
                     if (state) {
-                        socket.emit('gameStateUpdate', state);
+                        const scrubbedState = ludoGameEngine.scrubStateForClient(state);
+                        socket.emit('gameStateUpdate', scrubbedState);
                     }
                 } catch (err) {
                     console.error(`[Socket] Ludo Recovery Error: ${err.message}`);
@@ -90,7 +92,8 @@ export const initializeSocket = (socketIo) => {
 
             const updateData = data || state;
             if (gameId && updateData) {
-                socket.to(gameId).emit('gameStateUpdate', updateData);
+                const scrubbedData = gameType === 'ludo' ? ludoGameEngine.scrubStateForClient(updateData) : updateData;
+                socket.to(gameId).emit('gameStateUpdate', scrubbedData);
             }
         });
 
@@ -137,7 +140,13 @@ export const getIO = () => {
 
 // Generic broadcast
 export const broadcastGameState = (gameId, event, data) => {
-    if (io) io.to(gameId).emit(event, data);
+    if (io) {
+        // If data is a Ludo board state, scrub it
+        const safeData = (event === 'gameStateUpdate' && data && Array.isArray(data.diceQueue)) 
+            ? ludoGameEngine.scrubStateForClient(data) 
+            : data;
+        io.to(gameId).emit(event, safeData);
+    }
 };
 
 

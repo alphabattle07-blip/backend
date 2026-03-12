@@ -1,4 +1,5 @@
 import { prisma } from './prisma.js';
+import { initializeGame as initLudoGame } from '../engine/ludoGameEngine.js';
 
 const SUIT_CARDS = {
     circle: [1, 2, 3, 4, 5, 7, 8, 10, 11, 12, 13, 14],
@@ -48,32 +49,11 @@ export const initializeGameData = (gameType, player1, player2) => {
         updateData.board = Array(12).fill(4);
         updateData.currentTurn = player1.id;
     } else if (gameType === 'ludo') {
-        const HOUSE_POS = -1;
         const p1Color = 'blue';
         const p2Color = 'green';
-        const level = 2;
+        const level = 2; // Default Standard Level
 
-        updateData.board = {
-            players: [
-                {
-                    id: 'p1',
-                    color: p1Color,
-                    seeds: Array.from({ length: 4 }).map((_, i) => ({ id: `${p1Color}-${i}`, position: HOUSE_POS, landingPos: HOUSE_POS, animationDelay: 0 })),
-                },
-                {
-                    id: 'p2',
-                    color: p2Color,
-                    seeds: Array.from({ length: 4 }).map((_, i) => ({ id: `${p2Color}-${i}`, position: HOUSE_POS, landingPos: HOUSE_POS, animationDelay: 0 })),
-                },
-            ],
-            currentPlayerIndex: 0,
-            dice: [],
-            diceUsed: [],
-            waitingForRoll: true,
-            winner: null,
-            log: ['Game Started'],
-            level: level
-        };
+        updateData.board = initLudoGame(p1Color, p2Color, level);
         updateData.currentTurn = player1.id;
     } else if (gameType === 'whot') {
         const ruleVersion = "rule1";

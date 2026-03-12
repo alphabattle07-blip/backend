@@ -1,10 +1,39 @@
 import { randomInt } from 'crypto';
+import seedrandom from 'seedrandom';
 import { LudoBoardData } from './ludoCoordinates.js';
 
 const HOUSE_POS = -1;
 const FINISH_POS = 56;
 
-export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2) => {
+// Stateful generator that uses and updates a seed string
+const generateDiceBatch = (level, count, seedState) => {
+    // If no state provided, create a fresh truly random seed
+    const rng = seedrandom(seedState || Math.random().toString(), { state: true });
+    
+    // If we passed an existing state string, we MUST restore the RNG's internal state
+    if (seedState && typeof seedState === 'object') {
+        rng.state(seedState);
+    }
+
+    const batch = [];
+    for (let i = 0; i < count; i++) {
+        // seedrandom returns 0 [inclusive] to 1 [exclusive]
+        // Math.floor(rng() * 6) + 1 gives 1 to 6
+        const d1 = Math.floor(rng() * 6) + 1;
+        const d2 = Math.floor(rng() * 6) + 1;
+        batch.push(level >= 3 ? [d1, d2] : [d1]);
+    }
+    
+    // Return both the batch AND the new internal state of the generator
+    return {
+        batch,
+        newState: rng.state()
+    };
+};
+
+export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2, matchSeed = null) => {
+    const initialDiceData = generateDiceBatch(level, 50, matchSeed || `match_${Date.now()}_${Math.random()}`);
+    
     return {
         players: [
             {
@@ -23,6 +52,8 @@ export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2) =
         currentPlayerIndex: 0,
         dice: [],
         diceUsed: [],
+        diceQueue: initialDiceData.batch,
+        diceSeedState: initialDiceData.newState, // Store the RNG state for perfect determinism
         waitingForRoll: true,
         winner: null,
         log: ['Game Started'],
@@ -38,14 +69,31 @@ export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2) =
 export const rollDice = (state) => {
     if (!state.waitingForRoll) return state;
 
-    const d1 = randomInt(1, 7);
-    const d2 = randomInt(1, 7);
+    let queue = state.diceQueue || [];
+    let currentSeedState = state.diceSeedState;
+    
+    // Refill queue if running low
+    if (queue.length < 10) {
+        const newData = generateDiceBatch(state.level, 50, currentSeedState);
+        queue = [...queue, ...newData.batch];
+        currentSeedState = newData.newState;
+    }
 
-    const dice = state.level >= 3 ? [d1, d2] : [d1];
+    // Safety Check: If queue is completely empty (e.g. state corruption) and still low after refill
+    if (!queue.length) {
+        const emergencyData = generateDiceBatch(state.level, 50, currentSeedState);
+        queue = [...emergencyData.batch];
+        currentSeedState = emergencyData.newState;
+    }
+
+    // Pull next pre-generated roll
+    const dice = queue.shift();
     const diceUsed = state.level >= 3 ? [false, false] : [false];
 
     return {
         ...state,
+        diceQueue: queue,
+        diceSeedState: currentSeedState,
         dice,
         diceUsed,
         waitingForRoll: false,
@@ -327,5 +375,12 @@ export const ludoGameEngine = {
     getValidMoves,
     applyMove,
     passTurn,
-    handleTurnTimeout
+    handleTurnTimeout,
+    scrubStateForClient: (state) => {
+        if (!state) return state;
+        const scrubbed = { ...state };
+        delete scrubbed.diceQueue; // Never send future rolls to clients!
+        delete scrubbed.diceSeedState; // Never send RNG state to clients!
+        return scrubbed;
+    }
 };
