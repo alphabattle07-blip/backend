@@ -296,7 +296,8 @@ export const ludoGameLoop = {
                     currentPlayerIndex: updatedBoard.currentPlayerIndex,
                     waitingForRoll: updatedBoard.waitingForRoll,
                     diceUsed: updatedBoard.diceUsed,
-                    lastProcessedMoveId: action.moveId
+                    lastProcessedMoveId: action.moveId,
+                    actionPlayerIndex: isPlayer1 ? 0 : 1
                 });
 
                 // Only restart timer if the turn passes to another player OR the current player earns a bonus roll
