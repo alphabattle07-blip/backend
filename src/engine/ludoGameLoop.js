@@ -225,19 +225,13 @@ export const ludoGameLoop = {
                         return;
                     }
 
-                    // Step 1: Broadcast "rolling started" to everyone immediately.
-                    // The opponent's phone uses this to start the spinning animation.
+                    // Notify opponent that rolling has started (so they show the rolling UI placeholder)
                     broadcastGameState(gameId, 'ludoActionUpdate', {
                         type: 'DICE_ROLLING_STARTED',
                         rollingPlayerIndex: isPlayer1 ? 0 : 1
                     });
 
-                    // Step 2: Wait 500ms so the two events arrive in SEPARATE socket
-                    // batches on the opponent's phone. Without this delay, React batches
-                    // both events into one render, the animation frame is skipped entirely.
-                    await new Promise(resolve => setTimeout(resolve, 500));
-
-                    // Step 3: Compute the actual result and continue broadcasting below.
+                    // Compute the actual result immediately
                     updatedBoard = ludoGameEngine.rollDice(updatedBoard);
                 } else if (action.type === 'MOVE_PIECE') {
                     if (board.waitingForRoll) {
