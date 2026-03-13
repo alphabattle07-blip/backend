@@ -224,6 +224,12 @@ export const ludoGameLoop = {
                         console.log(`[LudoLoop] Ignored ROLL_DICE: Not waiting for roll.`);
                         return;
                     }
+                    // Notify opponent that rolling has STARTED before we compute the result.
+                    // This gives the opponent's phone time to show the spinning animation.
+                    broadcastGameState(gameId, 'ludoActionUpdate', {
+                        type: 'DICE_ROLLING_STARTED',
+                        rollingPlayerIndex: isPlayer1 ? 0 : 1
+                    });
                     updatedBoard = ludoGameEngine.rollDice(updatedBoard);
                 } else if (action.type === 'MOVE_PIECE') {
                     if (board.waitingForRoll) {
