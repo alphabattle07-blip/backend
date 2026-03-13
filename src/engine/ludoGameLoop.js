@@ -287,7 +287,17 @@ export const ludoGameLoop = {
                 entry.state = updatedBoard;
                 await redis.set(`match:ludo:${gameId}`, JSON.stringify(updatedBoard));
 
-                broadcastGameState(gameId, 'gameStateUpdate', updatedBoard);
+                // Step 6: Reduce Payload Size for actions (DICE_ROLLED / PIECE_MOVED)
+                broadcastGameState(gameId, 'ludoActionUpdate', {
+                    type: action.type,
+                    move: action.type === 'MOVE_PIECE' ? action.move : undefined,
+                    dice: action.type === 'ROLL_DICE' ? updatedBoard.dice : undefined,
+                    stateVersion: updatedBoard.stateVersion,
+                    currentPlayerIndex: updatedBoard.currentPlayerIndex,
+                    waitingForRoll: updatedBoard.waitingForRoll,
+                    diceUsed: updatedBoard.diceUsed,
+                    lastProcessedMoveId: action.moveId
+                });
 
                 // Only restart timer if the turn passes to another player OR the current player earns a bonus roll
                 const turnChanged = board.currentPlayerIndex !== updatedBoard.currentPlayerIndex;
