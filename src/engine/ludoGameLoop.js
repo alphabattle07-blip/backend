@@ -14,17 +14,13 @@ const activeLudoGames = new Map();
 
 const TIME_LIMITS = {
     RULE_ONE: { // Competitive level
-        TOTAL: 30000,
-        YELLOW: 20000, // Align with red to skip yellow
-        AUTO_ROLL: 10000, // Auto-roll if dice not thrown within 10s
-        RED: 20000, // Warning state starts at 20s
+        TOTAL: 15000, // 15s total per phase (Roll phase / Move phase)
+        RED: 10000, // Warning state starts at 5s remaining (10s elapsed)
         FORFEIT: 3 // Game over after 3 timeouts
     },
     RULE_TWO: { // Standard level
-        TOTAL: 30000,
-        YELLOW: 20000, // Align with red to skip yellow
-        AUTO_ROLL: 10000, // Auto-roll if dice not thrown within 10s
-        RED: 20000, // Warning state starts at 20s
+        TOTAL: 15000,
+        RED: 10000,
         FORFEIT: 5 // Game over after 5 timeouts
     }
 };
@@ -41,14 +37,8 @@ setInterval(async () => {
         const elapsed = now - board.turnStartTime;
         const limits = board.level >= 3 ? TIME_LIMITS.RULE_ONE : TIME_LIMITS.RULE_TWO;
 
-        // 1. Check Auto-Roll (Only if waiting for roll and hasn't auto-rolled yet this turn)
-        if (board.waitingForRoll && elapsed >= limits.AUTO_ROLL && !entry.autoRolled) {
-            entry.autoRolled = true; // Mark to prevent repeated auto-rolls in the same turn
-            console.log(`[LudoLoop] Auto-rolling for ${board.currentPlayerIndex} in game ${gameId}`);
-            await ludoGameLoop.executeAction(gameId, board.players[board.currentPlayerIndex].id, { type: 'ROLL_DICE', auto: true });
-        }
-
-        // 2. Check Total Timeout (Auto-play)
+        // 1. Check Total Timeout (Auto-play)
+        // This natively handles both auto-roll and auto-move delegating to handleTurnTimeout
         if (elapsed >= limits.TOTAL) {
             console.log(`[LudoLoop] Turn timeout for ${board.currentPlayerIndex} in game ${gameId}`);
             await ludoGameLoop.handleTurnTimeout(gameId, board.players[board.currentPlayerIndex].id);
@@ -97,7 +87,7 @@ export const ludoGameLoop = {
 
         board.turnStartTime = Date.now() + startBuffer;
         board.turnDuration = limits.TOTAL;
-        board.yellowAt = board.turnStartTime + limits.YELLOW;
+        // board.yellowAt is no longer used for 15s timer
         board.redAt = board.turnStartTime + limits.RED;
         entry.autoRolled = false;
 
@@ -109,7 +99,6 @@ export const ludoGameLoop = {
             whoseTurn: board.players[board.currentPlayerIndex].id,
             timeLimit: limits.TOTAL,
             turnStartTime: board.turnStartTime,
-            yellowAt: board.yellowAt,
             redAt: board.redAt,
             serverTime: Date.now()
         });
@@ -305,14 +294,19 @@ export const ludoGameLoop = {
                     waitingForRoll: updatedBoard.waitingForRoll,
                     diceUsed: updatedBoard.diceUsed,
                     lastProcessedMoveId: action.moveId,
-                    actionPlayerIndex: isPlayer1 ? 0 : 1
+                    actionPlayerIndex: isPlayer1 ? 0 : 1,
+                    serverTime: Date.now()
                 });
 
-                // Only restart timer if the turn passes to another player OR the current player earns a bonus roll
+                // Restart timer if:
+                // 1. The turn explicitly passed to another player
+                // 2. The player earned a bonus roll (isBonusTurn)
+                // 3. The player completed the ROLL_DICE action and is now transitioning to the move phase
                 const turnChanged = board.currentPlayerIndex !== updatedBoard.currentPlayerIndex;
                 const isBonusTurn = !board.waitingForRoll && updatedBoard.waitingForRoll && !turnChanged;
+                const phaseChangedToMove = board.waitingForRoll && !updatedBoard.waitingForRoll;
 
-                if (turnChanged || isBonusTurn) {
+                if (turnChanged || isBonusTurn || phaseChangedToMove) {
                     await ludoGameLoop.startTurnTimer(gameId, null);
                 }
 
