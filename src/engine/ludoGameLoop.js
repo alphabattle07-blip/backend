@@ -121,26 +121,23 @@ export const ludoGameLoop = {
                 // 1. Authoritative Auto-Play via Engine
                 const nextBoard = ludoGameEngine.handleTurnTimeout(board);
 
-                // 2. Check Forfeit
-                const playerIndex = nextBoard.currentPlayerIndex; // The player who just timed out
-                const player = nextBoard.players[playerIndex];
-                const limits = nextBoard.level >= 3 ? TIME_LIMITS.RULE_ONE : TIME_LIMITS.RULE_TWO;
+                // 2. Check Forfeit (Check the player who JUST timed out, i.e. the player from the original board)
+                const timedOutPlayerIndex = board.currentPlayerIndex;
+                const timedOutPlayer = nextBoard.players[timedOutPlayerIndex];
+                const limits = board.level >= 3 ? TIME_LIMITS.RULE_ONE : TIME_LIMITS.RULE_TWO;
 
-                if (player.timeouts >= limits.FORFEIT) {
-                    await ludoGameLoop.handleForfeit(gameId, player.id);
+                if (timedOutPlayer.timeouts >= limits.FORFEIT) {
+                    await ludoGameLoop.handleForfeit(gameId, timedOutPlayer.id);
                     return;
                 }
 
-                // 3. Save & Broadcast
+                // 3. Save & Broadcast (scrub server-only data before sending)
                 entry.state = nextBoard;
                 await redis.set(`match:ludo:${gameId}`, JSON.stringify(nextBoard));
 
-                broadcastGameState(gameId, 'gameStateUpdate', nextBoard);
+                broadcastGameState(gameId, 'gameStateUpdate', ludoGameEngine.scrubStateForClient(nextBoard));
 
-                // Refresh timer for next turn (handleTurnTimeout already switched turn if move played)
-                const nextUser = nextBoard.players[nextBoard.currentPlayerIndex];
-                // Resolve real UUID if needed (here we assume nextUser.id matches logical IDs)
-                // For simplicity, we just restart the timer logic
+                // Refresh timer for next phase
                 await ludoGameLoop.startTurnTimer(gameId, null);
 
             } catch (err) {

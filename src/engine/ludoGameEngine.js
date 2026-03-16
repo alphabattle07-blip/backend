@@ -97,7 +97,8 @@ export const rollDice = (state) => {
         dice,
         diceUsed,
         waitingForRoll: false,
-        log: [...(state.log || []), `Rolled [${dice.join(', ')}]`],
+        stateVersion: (state.stateVersion || 0) + 1,
+        log: [...(state.log || []).slice(-9), `Rolled [${dice.join(', ')}]`],
     };
 };
 
@@ -330,7 +331,8 @@ export const applyMove = (state, move) => {
         waitingForRoll: waiting,
         dice: waiting ? [] : state.dice,
         winner: winner,
-        log: [...(state.log || []), `Moved seed`],
+        stateVersion: (state.stateVersion || 0) + 1,
+        log: [...(state.log || []).slice(-9), `Moved seed`],
     };
 };
 
@@ -341,7 +343,8 @@ export const passTurn = (state) => {
         waitingForRoll: true,
         diceUsed: state.level >= 3 ? [false, false] : [false],
         dice: [],
-        log: [...(state.log || []), `Turn passed`],
+        stateVersion: (state.stateVersion || 0) + 1,
+        log: [...(state.log || []).slice(-9), `Turn passed`],
     };
 };
 
@@ -379,8 +382,9 @@ export const ludoGameEngine = {
     scrubStateForClient: (state) => {
         if (!state) return state;
         const scrubbed = { ...state };
-        delete scrubbed.diceQueue; // Never send future rolls to clients!
+        delete scrubbed.diceQueue;    // Never send future rolls to clients!
         delete scrubbed.diceSeedState; // Never send RNG state to clients!
+        delete scrubbed.log;           // Log is server debug data only — keeps payload tiny
         return scrubbed;
     }
 };
