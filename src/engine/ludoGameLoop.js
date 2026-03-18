@@ -25,26 +25,8 @@ const TIME_LIMITS = {
     }
 };
 
-// Central Ticker
-setInterval(async () => {
-    for (const [gameId, entry] of activeLudoGames.entries()) {
-        const board = entry.state;
-        if (!board || board.winner || entry.isLocked) continue;
-
-
-
-        const now = Date.now();
-        const elapsed = now - board.turnStartTime;
-        const limits = board.level >= 3 ? TIME_LIMITS.RULE_ONE : TIME_LIMITS.RULE_TWO;
-
-        // 1. Check Total Timeout (Auto-play)
-        // This natively handles both auto-roll and auto-move delegating to handleTurnTimeout
-        if (elapsed >= limits.TOTAL) {
-            console.log(`[LudoLoop] Turn timeout for ${board.currentPlayerIndex} in game ${gameId}`);
-            await ludoGameLoop.handleTurnTimeout(gameId, board.players[board.currentPlayerIndex].id);
-        }
-    }
-}, 300);
+// Central Ticker - REMOVED for event-driven architecture
+// No more global loop iterating over all games.
 
 export const ludoGameLoop = {
     /**
@@ -76,7 +58,8 @@ export const ludoGameLoop = {
                 state: gameState,
                 lock: Promise.resolve(),
                 isLocked: false,
-                autoRolled: false
+                autoRolled: false,
+                timeoutId: null
             };
             activeLudoGames.set(gameId, entry);
         }
@@ -87,9 +70,23 @@ export const ludoGameLoop = {
 
         board.turnStartTime = Date.now() + startBuffer;
         board.turnDuration = limits.TOTAL;
-        // board.yellowAt is no longer used for 15s timer
         board.redAt = board.turnStartTime + limits.RED;
         entry.autoRolled = false;
+
+        // Reset any existing timer
+        if (entry.timeoutId) {
+            clearTimeout(entry.timeoutId);
+            entry.timeoutId = null;
+        }
+
+        // Schedule next timeout (only if game is not over)
+        if (!board.winner && board.status !== 'COMPLETED') {
+            const timeToTimeout = board.turnDuration + startBuffer;
+            console.log(`[LudoLoop] Scheduling timeout for ${gameId} in ${timeToTimeout}ms`);
+            entry.timeoutId = setTimeout(() => {
+                ludoGameLoop.handleTurnTimeout(gameId, board.players[board.currentPlayerIndex].id);
+            }, timeToTimeout);
+        }
 
         // MUST sync new timestamps to Redis immediately
         await redis.set(`match:ludo:${gameId}`, JSON.stringify(board));
@@ -105,23 +102,30 @@ export const ludoGameLoop = {
     },
 
     clearTurnTimer: (gameId) => {
-        // Central ticker handles cleanup via game winner or removal
+        const entry = activeLudoGames.get(gameId);
+        if (entry?.timeoutId) {
+            clearTimeout(entry.timeoutId);
+            entry.timeoutId = null;
+        }
     },
 
     handleTurnTimeout: async (gameId, playerId) => {
         const entry = activeLudoGames.get(gameId);
         if (!entry) return;
 
+        // Queue timeout processing on the action lock to prevent collisions with player moves
         entry.lock = entry.lock.then(async () => {
             entry.isLocked = true;
             try {
                 const board = entry.state;
-                if (board.winner || board.status === 'COMPLETED') return;
+                if (!board || board.winner || board.status === 'COMPLETED') return;
+
+                console.log(`[LudoLoop] Turn timeout triggered for game ${gameId}, player ${board.currentPlayerIndex}`);
 
                 // 1. Authoritative Auto-Play via Engine
                 const nextBoard = ludoGameEngine.handleTurnTimeout(board);
 
-                // 2. Check Forfeit (Check the player who JUST timed out, i.e. the player from the original board)
+                // 2. Check Forfeit
                 const timedOutPlayerIndex = board.currentPlayerIndex;
                 const timedOutPlayer = nextBoard.players[timedOutPlayerIndex];
                 const limits = board.level >= 3 ? TIME_LIMITS.RULE_ONE : TIME_LIMITS.RULE_TWO;
@@ -131,7 +135,7 @@ export const ludoGameLoop = {
                     return;
                 }
 
-                // 3. Save & Broadcast (scrub server-only data before sending)
+                // 3. Save & Broadcast
                 entry.state = nextBoard;
                 await redis.set(`match:ludo:${gameId}`, JSON.stringify(nextBoard));
 
@@ -141,7 +145,7 @@ export const ludoGameLoop = {
                 await ludoGameLoop.startTurnTimer(gameId, null);
 
             } catch (err) {
-                console.error(`[LudoLoop] Timeout error: ${err.message}`);
+                console.error(`[LudoLoop] Timeout handler error: ${err.message}`);
             } finally {
                 entry.isLocked = false;
             }
@@ -173,6 +177,7 @@ export const ludoGameLoop = {
         // --- ARCHIVE CHAT ---
         chatRepository.persistMatchChat(gameId);
 
+        ludoGameLoop.clearTurnTimer(gameId);
         activeLudoGames.delete(gameId);
         await redis.del(`match:ludo:${gameId}`);
     },
@@ -273,6 +278,7 @@ export const ludoGameLoop = {
                     // --- ARCHIVE CHAT ---
                     chatRepository.persistMatchChat(gameId);
 
+                    ludoGameLoop.clearTurnTimer(gameId);
                     activeLudoGames.delete(gameId);
                     await redis.del(`match:ludo:${gameId}`);
                     return;

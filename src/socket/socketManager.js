@@ -13,6 +13,10 @@ const userSockets = new Map();
 // Reverse map socketId -> userId
 const socketUser = new Map();
 
+// NOTE: Socket.IO configuration (pingTimeout, pingInterval) should be set 
+// where the Server/IO instance is instantiated (e.g. server.js or index.js).
+// Here we just use the initialized instance.
+
 export const initializeSocket = (socketIo) => {
     io = socketIo;
 
@@ -50,7 +54,14 @@ export const initializeSocket = (socketIo) => {
                     const state = await ludoGameLoop.getFullStateSnapshot(gameId, userId);
                     if (state) {
                         const scrubbedState = ludoGameEngine.scrubStateForClient(state);
-                        socket.emit('gameStateUpdate', scrubbedState);
+                        // getFullStateSnapshot returns { ...board, remainingTime, serverTime }
+                        // scrubStateForClient might remove remainingTime if not careful, 
+                        // so we manually ensure it's there.
+                        socket.emit('gameStateUpdate', {
+                            ...scrubbedState,
+                            remainingTime: state.remainingTime,
+                            serverTime: state.serverTime
+                        });
                     }
                 } catch (err) {
                     console.error(`[Socket] Ludo Recovery Error: ${err.message}`);

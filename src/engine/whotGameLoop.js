@@ -43,25 +43,8 @@ const getWhotMaxTimeouts = (rating) => {
 };
 
 // --- CENTRAL TICKER ENGINE ---
-// Replaces per-match setTimeouts. Checks all active matches every 300ms.
-setInterval(() => {
-    for (const [gameId, entry] of activeWhotGames.entries()) {
-        const state = entry.state;
-
-        // 1. Skip if already ended
-        if (state.status === 'COMPLETED') continue;
-
-        // 2. Skip if currently executing a move (lock is pending)
-        if (entry.isLocked) continue;
-
-        // 3. Check for timeout
-        const now = Date.now();
-        if (now >= state.turnStartTime + state.turnDuration) {
-            // Trigger timeout
-            whotGameLoop.handleTurnTimeout(gameId, state.turnPlayer);
-        }
-    }
-}, 300);
+// REMOVED for event-driven architecture.
+// Individual matches now manage their own timeouts.
 
 // Helper: Check if card matches pile card
 const isValidMove = (card, pileCard, calledSuit) => {
@@ -88,7 +71,8 @@ export const whotGameLoop = {
             state,
             timers: {},
             lock: Promise.resolve(),
-            isLocked: false // Tracks atomic execution state for the central ticker
+            isLocked: false,
+            timeoutId: null
         };
 
         activeWhotGames.set(gameId, gameEntry);
@@ -120,7 +104,8 @@ export const whotGameLoop = {
                     state: parsed,
                     timers: {},
                     lock: Promise.resolve(),
-                    isLocked: false
+                    isLocked: false,
+                    timeoutId: null
                 };
                 activeWhotGames.set(gameId, entry);
             }
@@ -250,12 +235,25 @@ export const whotGameLoop = {
      * Start or reset the turn timer for a Whot game
      */
     startTurnTimer: async (gameId, currentPlayerId) => {
-        // StartTurnTimer is now purely responsble for emitting the visual clock values to clients.
-        // It does NOT govern the actual timeout interval.
         const entry = activeWhotGames.get(gameId);
         if (!entry) return;
 
         const state = entry.state;
+
+        // Clear existing timer
+        if (entry.timeoutId) {
+            clearTimeout(entry.timeoutId);
+            entry.timeoutId = null;
+        }
+
+        // Schedule next timeout (only if game is not over)
+        if (state.status !== 'COMPLETED') {
+            const timeToTimeout = state.turnDuration;
+            console.log(`[WhotLoop] Scheduling timeout for ${gameId} in ${timeToTimeout}ms`);
+            entry.timeoutId = setTimeout(() => {
+                whotGameLoop.handleTurnTimeout(gameId, currentPlayerId);
+            }, timeToTimeout);
+        }
 
         broadcastGameState(gameId, 'turnStarted', {
             whoseTurn: currentPlayerId,
@@ -265,7 +263,11 @@ export const whotGameLoop = {
     },
 
     clearTurnTimer: (gameId) => {
-        // Obsolete function kept for legacy. The central ticker manages execution now.
+        const entry = activeWhotGames.get(gameId);
+        if (entry?.timeoutId) {
+            clearTimeout(entry.timeoutId);
+            entry.timeoutId = null;
+        }
     },
 
     /**
@@ -284,7 +286,8 @@ export const whotGameLoop = {
                     state,
                     timers: {},
                     lock: Promise.resolve(),
-                    isLocked: false
+                    isLocked: false,
+                    timeoutId: null
                 };
                 activeWhotGames.set(gameId, entry);
 
@@ -460,4 +463,4 @@ export const whotGameLoop = {
         activeWhotGames.delete(gameId);
         await redis.del(`match:${gameId}`);
     }
-};
+}
