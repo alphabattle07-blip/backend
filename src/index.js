@@ -29,8 +29,8 @@ app.use(express.json());
 // Initialize Socket.IO
 const io = new Server(httpServer, {
     cors: corsOptions,
-    pingTimeout: 20000,
-    pingInterval: 25000,
+    pingInterval: 20000,
+    pingTimeout: 25000,
 });
 
 // Initialize Socket Manager

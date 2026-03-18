@@ -171,6 +171,9 @@ export const whotGameLoop = {
                 // Apply
                 const nextState = whotGameEngine.applyMove(state, playerId, move);
 
+                // Increment state version for event ordering
+                nextState.stateVersion = (nextState.stateVersion || 0) + 1;
+
                 // ATOMIC TIMER RESET INSIDE LOCK
                 // This guarantees the ticker doesn't accidentally trigger a timeout between the move executing and the timer restarting.
                 nextState.turnStartTime = Date.now();
@@ -227,7 +230,10 @@ export const whotGameLoop = {
         });
 
         // Ensure the queue doesn't permanently reject, but return the original promise to the caller
-        entry.lock = currentExecution.catch(() => { });
+        entry.lock = currentExecution.catch((err) => {
+            console.error(`[WhotLoop] Critical Lock Error in executeMove for ${gameId}:`, err);
+            entry.isLocked = false;
+        });
         return currentExecution;
     },
 
@@ -392,7 +398,10 @@ export const whotGameLoop = {
         });
 
         // Ensure the queue doesn't break
-        entry.lock = currentExecution.catch(() => { });
+        entry.lock = currentExecution.catch((err) => {
+            console.error(`[WhotLoop] Critical Lock Error in handleTurnTimeout for ${gameId}:`, err);
+            entry.isLocked = false;
+        });
         return currentExecution;
     },
 

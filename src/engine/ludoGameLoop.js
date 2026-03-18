@@ -149,6 +149,9 @@ export const ludoGameLoop = {
             } finally {
                 entry.isLocked = false;
             }
+        }).catch((err) => {
+            console.error(`[LudoLoop] Critical Lock Error in handleTurnTimeout for ${gameId}:`, err);
+            entry.isLocked = false; // Emergency unlock
         });
     },
 
@@ -192,7 +195,7 @@ export const ludoGameLoop = {
         return entry.lock = entry.lock.then(async () => {
             entry.isLocked = true;
             try {
-                let board = entry.state;
+                const board = entry.state;
                 const isPlayer1 = userId === null ? true : await (async () => { // Handle auto-actions
                     if (userId === 'p1') return true;
                     if (userId === 'p2') return false;
@@ -319,6 +322,10 @@ export const ludoGameLoop = {
             } finally {
                 entry.isLocked = false;
             }
+        }).catch((err) => {
+            console.error(`[LudoLoop] Critical Lock Error in executeAction for ${gameId}:`, err);
+            entry.isLocked = false; // Emergency unlock
+            throw err;
         });
     },
 
