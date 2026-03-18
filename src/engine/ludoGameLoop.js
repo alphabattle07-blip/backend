@@ -1,5 +1,5 @@
 
-import { broadcastGameState } from '../socket/socketManager.js';
+import { broadcastGameEvent } from '../socket/socketManager.js';
 import { PrismaClient } from '../generated/prisma/index.js';
 import { ludoGameEngine } from './ludoGameEngine.js';
 import { processMatchRewards } from '../utils/gameUtils.js';
@@ -91,14 +91,13 @@ export const ludoGameLoop = {
         // MUST sync new timestamps to Redis immediately
         await redis.set(`match:ludo:${gameId}`, JSON.stringify(board));
 
-        // Broadcast to clients
-        broadcastGameState(gameId, 'turnStarted', {
+        // Broadcast to clients using unified event
+        await broadcastGameEvent(gameId, 'TURN_STARTED', {
             whoseTurn: board.players[board.currentPlayerIndex].id,
             timeLimit: limits.TOTAL,
             turnStartTime: board.turnStartTime,
-            redAt: board.redAt,
-            serverTime: Date.now()
-        });
+            redAt: board.redAt
+        }, { isStateChange: true }); // Atomic stateVersion increment
     },
 
     clearTurnTimer: (gameId) => {
@@ -139,7 +138,11 @@ export const ludoGameLoop = {
                 entry.state = nextBoard;
                 await redis.set(`match:ludo:${gameId}`, JSON.stringify(nextBoard));
 
-                broadcastGameState(gameId, 'gameStateUpdate', ludoGameEngine.scrubStateForClient(nextBoard));
+                // Unified Event
+                await broadcastGameEvent(gameId, 'GAME_STATE_UPDATE', 
+                    ludoGameEngine.scrubStateForClient(nextBoard), 
+                    { isStateChange: true }
+                );
 
                 // Refresh timer for next phase
                 await ludoGameLoop.startTurnTimer(gameId, null);
@@ -175,7 +178,7 @@ export const ludoGameLoop = {
             }
         });
 
-        broadcastGameState(gameId, 'gameEnded', { winnerId, reason: 'forfeit' });
+        await broadcastGameEvent(gameId, 'GAME_ENDED', { winnerId, reason: 'forfeit' }, { isStateChange: true });
 
         // --- ARCHIVE CHAT ---
         chatRepository.persistMatchChat(gameId);
@@ -219,9 +222,8 @@ export const ludoGameLoop = {
                         return;
                     }
 
-                    // Notify opponent that rolling has started (so they show the rolling UI placeholder)
-                    broadcastGameState(gameId, 'ludoActionUpdate', {
-                        type: 'DICE_ROLLING_STARTED',
+                    // Notify opponent that rolling has started
+                    await broadcastGameEvent(gameId, 'DICE_ROLLING_STARTED', {
                         rollingPlayerIndex: isPlayer1 ? 0 : 1
                     });
 
@@ -276,7 +278,7 @@ export const ludoGameLoop = {
                         }
                     });
 
-                    broadcastGameState(gameId, 'gameEnded', { winnerId });
+                    await broadcastGameEvent(gameId, 'GAME_ENDED', { winnerId }, { isStateChange: true });
 
                     // --- ARCHIVE CHAT ---
                     chatRepository.persistMatchChat(gameId);
@@ -290,19 +292,16 @@ export const ludoGameLoop = {
                 entry.state = updatedBoard;
                 await redis.set(`match:ludo:${gameId}`, JSON.stringify(updatedBoard));
 
-                // Step 6: Reduce Payload Size for actions (DICE_ROLLED / PIECE_MOVED)
-                broadcastGameState(gameId, 'ludoActionUpdate', {
-                    type: action.type,
+                // Unified Event for Action Update (Roll/Move)
+                await broadcastGameEvent(gameId, 'LUDO_ACTION_UPDATE', {
                     move: action.type === 'MOVE_PIECE' ? action.move : undefined,
                     dice: action.type === 'ROLL_DICE' ? updatedBoard.dice : undefined,
-                    stateVersion: updatedBoard.stateVersion,
                     currentPlayerIndex: updatedBoard.currentPlayerIndex,
                     waitingForRoll: updatedBoard.waitingForRoll,
                     diceUsed: updatedBoard.diceUsed,
                     lastProcessedMoveId: action.moveId,
-                    actionPlayerIndex: isPlayer1 ? 0 : 1,
-                    serverTime: Date.now()
-                });
+                    actionPlayerIndex: isPlayer1 ? 0 : 1
+                }, { isStateChange: true });
 
                 // Restart timer if:
                 // 1. The turn explicitly passed to another player

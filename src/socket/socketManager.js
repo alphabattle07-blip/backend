@@ -4,6 +4,7 @@ import { whotGameEngine } from '../engine/whotGameEngine.js';
 import { whotGameLoop } from '../engine/whotGameLoop.js';
 import { PrismaClient } from '../generated/prisma/index.js';
 import { initializeChatSocket } from '../chat/chatSocket.js';
+import redis from '../utils/redis.js';
 
 const prisma = new PrismaClient();
 
@@ -149,52 +150,63 @@ export const getIO = () => {
     return io;
 };
 
-// Generic broadcast
-export const broadcastGameState = (gameId, event, data) => {
-    if (io) {
-        // If data is a Ludo board state, scrub it
-        const safeData = (event === 'gameStateUpdate' && data && Array.isArray(data.diceQueue)) 
-            ? ludoGameEngine.scrubStateForClient(data) 
-            : data;
-        io.to(gameId).emit(event, safeData);
+/**
+ * Unified Production-Ready Broadcast
+ * Uses atomic Redis counters for guaranteed ordering.
+ */
+export const broadcastGameEvent = async (gameId, type, payload, options = {}) => {
+    if (!io) return;
+
+    // 1. Atomic sequence increments
+    const eventId = await redis.incr(`game:${gameId}:eventId`);
+    
+    // Only increment stateVersion if this event actually changes game logic state
+    let stateVersion = null;
+    if (options.isStateChange) {
+        stateVersion = await redis.incr(`game:${gameId}:stateVersion`);
+    } else {
+        // Fetch current to keep it in the payload for reference
+        const current = await redis.get(`game:${gameId}:stateVersion`);
+        stateVersion = current ? parseInt(current) : 0;
     }
+
+    const gameEvent = {
+        eventId,
+        stateVersion,
+        type,
+        payload,
+        serverTime: Date.now()
+    };
+
+    // 2. Broadcast
+    io.to(gameId).emit('gameEvent', gameEvent);
+    return gameEvent;
 };
 
-
 /**
- * Whot Specific Broadcast: Ensures Fog-of-War by scrubbing state for each player individually
+ * Fog-of-War version of the unified broadcast (for Whot)
  */
-export const broadcastScrubbedState = async (gameId, state) => {
+export const broadcastScrubbedEvent = async (gameId, type, fullState, options = {}) => {
     if (!io) return;
+
+    const eventId = await redis.incr(`game:${gameId}:eventId`);
+    const stateVersion = await redis.incr(`game:${gameId}:stateVersion`);
 
     const room = io.sockets.adapter.rooms.get(gameId);
     if (!room) return;
 
-    // For each socket in the room, find its user and send uniquely scrubbed state
     for (const socketId of room) {
         const userId = socketUser.get(socketId);
         if (userId) {
-            const scrubbed = whotGameEngine.scrubStateForClient(state, userId);
-            io.to(socketId).emit('gameStateUpdate', { board: scrubbed, serverTime: Date.now() });
-        }
-    }
-};
-
-/**
- * Broadcast Opponent Move: Sends the move action to everyone EXCEPT the player who made it.
- * This triggers the animation on the opponent's screen.
- */
-export const broadcastOpponentMove = (gameId, excludePlayerId, moveData) => {
-    if (!io) return;
-
-    const room = io.sockets.adapter.rooms.get(gameId);
-    if (!room) return;
-
-    for (const socketId of room) {
-        const userId = socketUser.get(socketId);
-        // Send to everyone EXCEPT the excluded player (the mover)
-        if (userId && userId !== excludePlayerId) {
-            io.to(socketId).emit('opponent-move', moveData);
+            const scrubbed = whotGameEngine.scrubStateForClient(fullState, userId);
+            const gameEvent = {
+                eventId,
+                stateVersion,
+                type,
+                payload: { board: scrubbed },
+                serverTime: Date.now()
+            };
+            io.to(socketId).emit('gameEvent', gameEvent);
         }
     }
 };
