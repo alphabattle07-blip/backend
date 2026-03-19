@@ -222,13 +222,14 @@ export const ludoGameLoop = {
                         return;
                     }
 
-                    // Notify opponent that rolling has started
-                    await broadcastGameEvent(gameId, 'DICE_ROLLING_STARTED', {
-                        rollingPlayerIndex: isPlayer1 ? 0 : 1
-                    });
-
-                    // Compute the actual result immediately
+                    // Compute result FIRST (sync) so both events go out in the same tick
                     updatedBoard = ludoGameEngine.rollDice(updatedBoard);
+
+                    // Fire DICE_ROLLING_STARTED without awaiting — opponent gets the visual cue
+                    // and the result arrives almost simultaneously (<1 event-loop gap)
+                    broadcastGameEvent(gameId, 'DICE_ROLLING_STARTED', {
+                        rollingPlayerIndex: isPlayer1 ? 0 : 1
+                    }); // intentional: no await
                 } else if (action.type === 'MOVE_PIECE') {
                     if (board.waitingForRoll) {
                         console.log(`[LudoLoop] Ignored MOVE_PIECE: Must roll first.`);
