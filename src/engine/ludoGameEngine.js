@@ -41,12 +41,14 @@ export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2, m
                 color: p1Color,
                 seeds: Array.from({ length: 4 }).map((_, i) => ({ id: `${p1Color}-${i}`, position: HOUSE_POS, landingPos: HOUSE_POS, animationDelay: 0 })),
                 lastProcessedMoveId: null,
+                consecutiveNoSixes: 0,
             },
             {
                 id: 'p2',
                 color: p2Color,
                 seeds: Array.from({ length: 4 }).map((_, i) => ({ id: `${p2Color}-${i}`, position: HOUSE_POS, landingPos: HOUSE_POS, animationDelay: 0 })),
                 lastProcessedMoveId: null,
+                consecutiveNoSixes: 0,
             },
         ],
         currentPlayerIndex: 0,
@@ -87,11 +89,45 @@ export const rollDice = (state) => {
     }
 
     // Pull next pre-generated roll
-    const dice = queue.shift();
+    let dice = queue.shift();
     const diceUsed = state.level >= 3 ? [false, false] : [false];
+
+    // --- Pity Timer (Mercy Rule) ---
+    const newPlayers = JSON.parse(JSON.stringify(state.players));
+    const player = newPlayers[state.currentPlayerIndex];
+    let consecutiveNoSixes = player.consecutiveNoSixes || 0;
+    
+    // Calculate active seeds (not in house, not finished)
+    const activeCount = player.seeds.filter(s => s.position !== HOUSE_POS && s.position !== FINISH_POS).length;
+
+    if (activeCount === 0) {
+        if (!dice.includes(6)) {
+            consecutiveNoSixes++;
+            let forceSix = false;
+            
+            // Map regular rolls to higher probabilities deterministically based on original pop
+            if (consecutiveNoSixes >= 5) forceSix = true;
+            else if (consecutiveNoSixes === 4 && dice[0] >= 3) forceSix = true; // 66.6% chance
+            else if (consecutiveNoSixes === 3 && dice[0] >= 4) forceSix = true; // 50% chance
+            else if (consecutiveNoSixes === 2 && dice[0] === 5) forceSix = true; // 33.3% chance
+
+            if (forceSix) {
+                dice[0] = 6;
+                consecutiveNoSixes = 0; // Reset upon mapping a 6
+            }
+        } else {
+            consecutiveNoSixes = 0; // Naturally rolled a 6
+        }
+    } else {
+        // Player has active pieces, pity timer remains 0
+        consecutiveNoSixes = 0;
+    }
+    
+    player.consecutiveNoSixes = consecutiveNoSixes;
 
     return {
         ...state,
+        players: newPlayers,
         diceQueue: queue,
         diceSeedState: currentSeedState,
         dice,
