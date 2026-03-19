@@ -105,15 +105,12 @@ export const rollDice = (state) => {
             consecutiveNoSixes++;
             let forceSix = false;
             
-            // Map regular rolls to higher probabilities deterministically based on original pop
-            if (consecutiveNoSixes >= 5) forceSix = true;
-            else if (consecutiveNoSixes === 4 && dice[0] >= 3) forceSix = true; // 66.6% chance
-            else if (consecutiveNoSixes === 3 && dice[0] >= 4) forceSix = true; // 50% chance
-            else if (consecutiveNoSixes === 2 && dice[0] === 5) forceSix = true; // 33.3% chance
-
-            if (forceSix) {
+            if (consecutiveNoSixes >= 5) {
+                console.log(`[Ludo Pity Timer] Player ${player.id} reached 5 consecutive no-sixes. Forcing a 6!`);
                 dice[0] = 6;
                 consecutiveNoSixes = 0; // Reset upon mapping a 6
+            } else {
+                console.log(`[Ludo Pity Timer] Player ${player.id} rolled ${dice[0]} naturally. Attempt ${consecutiveNoSixes}/5.`);
             }
         } else {
             consecutiveNoSixes = 0; // Naturally rolled a 6
