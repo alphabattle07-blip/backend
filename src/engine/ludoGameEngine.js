@@ -103,20 +103,39 @@ export const rollDice = (state) => {
     if (activeCount === 0) {
         if (!dice.includes(6)) {
             consecutiveNoSixes++;
+
+            // Progressive probability boost:
+            // Attempt 1: natural ~16.6% (no boost)
+            // Attempt 2: +10% extra chance
+            // Attempt 3: +20% extra chance
+            // Attempt 4: +40% extra chance
+            // Attempt 5: guaranteed 6
             let forceSix = false;
-            
             if (consecutiveNoSixes >= 5) {
-                console.log(`[Ludo Pity Timer] Player ${player.id} reached 5 consecutive no-sixes. Forcing a 6!`);
-                dice[0] = 6;
-                consecutiveNoSixes = 0; // Reset upon mapping a 6
+                forceSix = true;
+                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt 5 — Forcing a 6!`);
+            } else if (consecutiveNoSixes === 4 && Math.random() < 0.40) {
+                forceSix = true;
+                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt 4 boost triggered (+40%)`);
+            } else if (consecutiveNoSixes === 3 && Math.random() < 0.20) {
+                forceSix = true;
+                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt 3 boost triggered (+20%)`);
+            } else if (consecutiveNoSixes === 2 && Math.random() < 0.10) {
+                forceSix = true;
+                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt 2 boost triggered (+10%)`);
             } else {
-                console.log(`[Ludo Pity Timer] Player ${player.id} rolled ${dice[0]} naturally. Attempt ${consecutiveNoSixes}/5.`);
+                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt ${consecutiveNoSixes}/5 — rolled ${dice[0]} naturally.`);
+            }
+
+            if (forceSix) {
+                dice[0] = 6;
+                consecutiveNoSixes = 0;
             }
         } else {
             consecutiveNoSixes = 0; // Naturally rolled a 6
         }
     } else {
-        // Player has active pieces, pity timer remains 0
+        // Player has active pieces, pity timer resets
         consecutiveNoSixes = 0;
     }
     
