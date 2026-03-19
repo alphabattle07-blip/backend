@@ -113,7 +113,7 @@ export const rollDice = (state) => {
             let forceSix = false;
             if (consecutiveNoSixes >= 5) {
                 forceSix = true;
-                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt 5 — Forcing a 6!`);
+                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt 5 - Forcing a 6!`);
             } else if (consecutiveNoSixes === 4 && Math.random() < 0.40) {
                 forceSix = true;
                 console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt 4 boost triggered (+40%)`);
@@ -124,7 +124,7 @@ export const rollDice = (state) => {
                 forceSix = true;
                 console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt 2 boost triggered (+10%)`);
             } else {
-                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt ${consecutiveNoSixes}/5 — rolled ${dice[0]} naturally.`);
+                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt ${consecutiveNoSixes}/5 - rolled ${dice[0]} naturally.`);
             }
 
             if (forceSix) {
