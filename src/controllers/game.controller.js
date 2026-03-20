@@ -306,7 +306,7 @@ export const playWhotMove = async (req, res) => {
     const memState = await whotGameLoop.getMatchState(gameId);
     if (memState) {
       const scrubbed = whotGameEngine.scrubState(memState, userId);
-      // We can use broadcastGameState but specifically for this user if we had their socket
+      // We can use broadcastGameEvent but specifically for this user if we had their socket
       // For now, returning it in the error response is the standard sync path
       return res.status(400).json({
         success: false,
