@@ -344,5 +344,45 @@ export const whotGameLoop = {
         whotGameLoop.clearTurnTimer(gameId);
         activeWhotGames.delete(gameId);
         await redis.del(`match:${gameId}`);
+    },
+
+    /**
+     * Server Restart Recovery: Re-load active matches into memory
+     */
+    recoverMatches: async () => {
+        try {
+            console.log('[WhotLoop] Searching for active Whot matches to recover...');
+            const activeMatches = await prisma.game.findMany({
+                where: {
+                    gameType: 'whot',
+                    status: 'IN_PROGRESS'
+                }
+            });
+
+            console.log(`[WhotLoop] Found ${activeMatches.length} matches to recover.`);
+
+            for (const match of activeMatches) {
+                try {
+                    const state = typeof match.board === 'string' ? JSON.parse(match.board) : match.board;
+                    if (!state) continue;
+
+                    activeWhotGames.set(match.id, {
+                        state,
+                        timers: {},
+                        lock: Promise.resolve(),
+                        isLocked: false,
+                        timeoutId: null
+                    });
+
+                    // Resume timer
+                    whotGameLoop.startTurnTimer(match.id, state.turnPlayer);
+                    console.log(`[WhotLoop] Recovered match: ${match.id}`);
+                } catch (err) {
+                    console.error(`[WhotLoop] Failed to recover individual match ${match.id}: ${err.message}`);
+                }
+            }
+        } catch (error) {
+            console.error('[WhotLoop] Match recovery error:', error);
+        }
     }
 };
