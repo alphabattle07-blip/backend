@@ -364,7 +364,8 @@ export const ludoGameLoop = {
                 state: gameState,
                 lock: Promise.resolve(),
                 isLocked: false,
-                autoRolled: false
+                autoRolled: false,
+                timeoutId: null
             };
             activeLudoGames.set(gameId, entry);
         }
@@ -380,6 +381,44 @@ export const ludoGameLoop = {
         };
     },
 
+    /**
+     * Server Restart Recovery: Re-load active Ludo matches into memory
+     */
+    recoverMatches: async () => {
+        try {
+            console.log('[LudoLoop] Searching for active Ludo matches to recover...');
+            const activeMatches = await prisma.game.findMany({
+                where: {
+                    gameType: 'ludo',
+                    status: 'IN_PROGRESS'
+                }
+            });
 
+            console.log(`[LudoLoop] Found ${activeMatches.length} Ludo matches to recover.`);
+
+            for (const match of activeMatches) {
+                try {
+                    const board = typeof match.board === 'string' ? JSON.parse(match.board) : match.board;
+                    if (!board) continue;
+
+                    activeLudoGames.set(match.id, {
+                        state: board,
+                        lock: Promise.resolve(),
+                        isLocked: false,
+                        autoRolled: false,
+                        timeoutId: null
+                    });
+
+                    // Resume timer
+                    await ludoGameLoop.startTurnTimer(match.id, null);
+                    console.log(`[LudoLoop] Recovered match: ${match.id}`);
+                } catch (err) {
+                    console.error(`[LudoLoop] Failed to recover individual match ${match.id}: ${err.message}`);
+                }
+            }
+        } catch (error) {
+            console.error('[LudoLoop] Ludo match recovery error:', error);
+        }
+    }
 };
 

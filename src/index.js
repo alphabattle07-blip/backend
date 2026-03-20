@@ -10,6 +10,7 @@ import matchmakingRoutes from './routes/matchmaking.route.js';
 import { initializeSocket } from './socket/socketManager.js';
 import { swaggerUi, specs } from './utils/swagger.js';
 import { whotGameLoop } from './engine/whotGameLoop.js';
+import { ludoGameLoop } from './engine/ludoGameLoop.js';
 
 dotenv.config();
 
@@ -36,8 +37,9 @@ const io = new Server(httpServer, {
 // Initialize Socket Manager
 initializeSocket(io);
 
-// Initialize Whot Match Recovery
+// Initialize Match Recovery
 whotGameLoop.recoverMatches();
+ludoGameLoop.recoverMatches();
 
 // Routes
 app.use('/api/games', gameRoutes);

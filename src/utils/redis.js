@@ -11,8 +11,14 @@ class MemoryRedis {
         console.log('⚠️ [Redis] Using In-Memory Fallback (Local Storage)');
     }
     async get(key) { return this.data.get(key) || null; }
-    async set(key, value) { this.data.set(key, value); return 'OK'; }
+    async set(key, value) { this.data.set(key, value.toString()); return 'OK'; }
     async del(key) { this.data.delete(key); return 1; }
+    async incr(key) {
+        let val = parseInt(this.data.get(key) || 0, 10);
+        val++;
+        this.data.set(key, val.toString());
+        return val;
+    }
     async keys(pattern) {
         const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
         return Array.from(this.data.keys()).filter(k => regex.test(k));
