@@ -222,14 +222,17 @@ export const ludoGameLoop = {
                         return;
                     }
 
-                    // Compute result FIRST (sync) so both events go out in the same tick
-                    updatedBoard = ludoGameEngine.rollDice(updatedBoard);
-
-                    // Fire DICE_ROLLING_STARTED without awaiting — opponent gets the visual cue
-                    // and the result arrives almost simultaneously (<1 event-loop gap)
+                    // Step 1: Tell everyone the player STARTED rolling (visual cue for opponent)
+                    // No await — this fires immediately so the opponent can start a spinning animation.
                     broadcastGameEvent(gameId, 'DICE_ROLLING_STARTED', {
                         rollingPlayerIndex: isPlayer1 ? 0 : 1
-                    }); // intentional: no await
+                    });
+
+                    // Step 2: 400ms window lets opponent render the spinning animation before result
+                    await new Promise(r => setTimeout(r, 400));
+
+                    // Step 3: NOW compute authoritative result (server RNG is never exposed to client)
+                    updatedBoard = ludoGameEngine.rollDice(updatedBoard);
                 } else if (action.type === 'MOVE_PIECE') {
                     if (board.waitingForRoll) {
                         console.log(`[LudoLoop] Ignored MOVE_PIECE: Must roll first.`);
@@ -257,8 +260,10 @@ export const ludoGameLoop = {
                 }
 
                 // Update state
+                // NOTE: DO NOT manually increment stateVersion here — the engine (rollDice/applyMove/passTurn)
+                // already bumps it. The Redis atomic counter in broadcastGameEvent tracks the broadcast
+                // sequence (eventId) separately. Double-incrementing caused the client's version check to fail.
                 if (action.moveId) updatedBoard.players[isPlayer1 ? 0 : 1].lastProcessedMoveId = action.moveId;
-                updatedBoard.stateVersion = (updatedBoard.stateVersion || 0) + 1;
 
                 // --- CHECK FOR WINNER ---
                 const game = await prisma.game.findUnique({ where: { id: gameId } });
@@ -294,14 +299,19 @@ export const ludoGameLoop = {
                 await redis.set(`match:ludo:${gameId}`, JSON.stringify(updatedBoard));
 
                 // Unified Event for Action Update (Roll/Move)
+                // Includes seedIndex so client can unlock per-seed interaction lock on confirm.
                 await broadcastGameEvent(gameId, 'LUDO_ACTION_UPDATE', {
+                    type: action.type,                              // echo action type to client
                     move: action.type === 'MOVE_PIECE' ? action.move : undefined,
                     dice: action.type === 'ROLL_DICE' ? updatedBoard.dice : undefined,
+                    diceUsed: action.type === 'ROLL_DICE' ? updatedBoard.diceUsed : undefined,
                     currentPlayerIndex: updatedBoard.currentPlayerIndex,
                     waitingForRoll: updatedBoard.waitingForRoll,
                     diceUsed: updatedBoard.diceUsed,
+                    stateVersion: updatedBoard.stateVersion,        // board-level version for optimistic check
                     lastProcessedMoveId: action.moveId,
-                    actionPlayerIndex: isPlayer1 ? 0 : 1
+                    actionPlayerIndex: isPlayer1 ? 0 : 1,
+                    actionSeedIndex: action.type === 'MOVE_PIECE' && action.move ? action.move.seedIndex : undefined,
                 }, { isStateChange: true });
 
                 // Restart timer if:
