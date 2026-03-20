@@ -1,7 +1,7 @@
 import { PrismaClient } from '../generated/prisma/index.js';
 import { initializeGameData } from '../utils/gameUtils.js';
 import { ludoGameLoop } from '../engine/ludoGameLoop.js';
-import { broadcastGameState } from '../socket/socketManager.js';
+import { broadcastGameEvent } from '../socket/socketManager.js';
 import { whotGameLoop } from '../engine/whotGameLoop.js';
 
 // Prisma client
@@ -113,7 +113,7 @@ export const joinGame = async (req, res) => {
     }
 
     // Broadcast Join Event
-    broadcastGameState(gameId, 'playerJoined', {
+    broadcastGameEvent(gameId, 'playerJoined', {
       game: updatedGame
     });
 
