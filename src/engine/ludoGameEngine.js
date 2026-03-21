@@ -31,9 +31,38 @@ const generateDiceBatch = (level, count, seedState) => {
     };
 };
 
-export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2, matchSeed = null) => {
-    const initialDiceData = generateDiceBatch(level, 50, matchSeed || `match_${Date.now()}_${Math.random()}`);
+/**
+ * Internal helper to pull next dice from the state's queue.
+ * Does not modify state; returns { dice, nextQueue, nextSeedState }.
+ */
+const pullNextDice = (state) => {
+    let queue = state.diceQueue || [];
+    let currentSeedState = state.diceSeedState;
     
+    // Refill queue if running low
+    if (queue.length < 10) {
+        const newData = generateDiceBatch(state.level, 50, currentSeedState);
+        queue = [...queue, ...newData.batch];
+        currentSeedState = newData.newState;
+    }
+
+    if (!queue.length) {
+        const emergencyData = generateDiceBatch(state.level, 50, currentSeedState);
+        queue = [...emergencyData.batch];
+        currentSeedState = emergencyData.newState;
+    }
+
+    const dice = queue.shift();
+    return { dice, nextQueue: queue, nextSeedState: currentSeedState };
+};
+
+    const initialDiceData = generateDiceBatch(level, 50, matchSeed || `match_${Date.now()}_${Math.random()}`);
+    let queue = initialDiceData.batch;
+    let seedState = initialDiceData.newState;
+
+    // PRE-ROLL THE FIRST DICE SECRETLY
+    const firstRoll = queue.shift();
+
     return {
         players: [
             {
@@ -54,8 +83,9 @@ export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2, m
         currentPlayerIndex: 0,
         dice: [],
         diceUsed: [],
-        diceQueue: initialDiceData.batch,
-        diceSeedState: initialDiceData.newState, // Store the RNG state for perfect determinism
+        preRolledDice: firstRoll, // Secretly rolled for p1
+        diceQueue: queue,
+        diceSeedState: seedState,
         waitingForRoll: true,
         winner: null,
         log: ['Game Started'],
@@ -71,71 +101,35 @@ export const initializeGame = (p1Color = 'red', p2Color = 'yellow', level = 2, m
 export const rollDice = (state) => {
     if (!state.waitingForRoll) return state;
 
-    let queue = state.diceQueue || [];
-    let currentSeedState = state.diceSeedState;
-    
-    // Refill queue if running low
-    if (queue.length < 10) {
-        const newData = generateDiceBatch(state.level, 50, currentSeedState);
-        queue = [...queue, ...newData.batch];
-        currentSeedState = newData.newState;
-    }
-
-    // Safety Check: If queue is completely empty (e.g. state corruption) and still low after refill
-    if (!queue.length) {
-        const emergencyData = generateDiceBatch(state.level, 50, currentSeedState);
-        queue = [...emergencyData.batch];
-        currentSeedState = emergencyData.newState;
-    }
-
-    // Pull next pre-generated roll
-    let dice = queue.shift();
+    // REVEAL THE PRE-ROLLED DICE INSTANTLY
+    const dice = state.preRolledDice || pullNextDice(state).dice;
     const diceUsed = state.level >= 3 ? [false, false] : [false];
 
     // --- Pity Timer (Mercy Rule) ---
+    // Note: Applying pity timer to pre-rolled dice might change them.
     const newPlayers = JSON.parse(JSON.stringify(state.players));
     const player = newPlayers[state.currentPlayerIndex];
     let consecutiveNoSixes = player.consecutiveNoSixes || 0;
     
-    // Calculate active seeds (not in house, not finished)
     const activeCount = player.seeds.filter(s => s.position !== HOUSE_POS && s.position !== FINISH_POS).length;
 
     if (activeCount === 0) {
         if (!dice.includes(6)) {
             consecutiveNoSixes++;
-
-            // Progressive probability boost:
-            // Attempt 1: natural ~16.6% (no boost)
-            // Attempt 2: +10% extra chance
-            // Attempt 3: +20% extra chance
-            // Attempt 4: +40% extra chance
-            // Attempt 5: guaranteed 6
             let forceSix = false;
-            if (consecutiveNoSixes >= 5) {
-                forceSix = true;
-                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt 5 - Forcing a 6!`);
-            } else if (consecutiveNoSixes === 4 && Math.random() < 0.40) {
-                forceSix = true;
-                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt 4 boost triggered (+40%)`);
-            } else if (consecutiveNoSixes === 3 && Math.random() < 0.20) {
-                forceSix = true;
-                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt 3 boost triggered (+20%)`);
-            } else if (consecutiveNoSixes === 2 && Math.random() < 0.10) {
-                forceSix = true;
-                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt 2 boost triggered (+10%)`);
-            } else {
-                console.log(`[Ludo Pity Timer] Player ${player.id}: Attempt ${consecutiveNoSixes}/5 - rolled ${dice[0]} naturally.`);
-            }
+            if (consecutiveNoSixes >= 5) forceSix = true;
+            else if (consecutiveNoSixes === 4 && Math.random() < 0.40) forceSix = true;
+            else if (consecutiveNoSixes === 3 && Math.random() < 0.20) forceSix = true;
+            else if (consecutiveNoSixes === 2 && Math.random() < 0.10) forceSix = true;
 
             if (forceSix) {
                 dice[0] = 6;
                 consecutiveNoSixes = 0;
             }
         } else {
-            consecutiveNoSixes = 0; // Naturally rolled a 6
+            consecutiveNoSixes = 0; 
         }
     } else {
-        // Player has active pieces, pity timer resets
         consecutiveNoSixes = 0;
     }
     
@@ -144,10 +138,9 @@ export const rollDice = (state) => {
     return {
         ...state,
         players: newPlayers,
-        diceQueue: queue,
-        diceSeedState: currentSeedState,
         dice,
         diceUsed,
+        preRolledDice: null, // Revealed
         waitingForRoll: false,
         stateVersion: (state.stateVersion || 0) + 1,
         log: [...(state.log || []).slice(-9), `Rolled [${dice.join(', ')}]`],
@@ -375,6 +368,12 @@ export const applyMove = (state, move) => {
         waiting = false;
     }
 
+    // Pre-calculate next dice if we are transitioning back to waiting for roll
+    let nextDiceInfo = { dice: null, nextQueue: state.diceQueue, nextSeedState: state.diceSeedState };
+    if (waiting) {
+        nextDiceInfo = pullNextDice({ ...state, diceQueue: state.diceQueue, diceSeedState: state.diceSeedState });
+    }
+
     return {
         ...state,
         players: newPlayers,
@@ -382,6 +381,9 @@ export const applyMove = (state, move) => {
         diceUsed: resetDice,
         waitingForRoll: waiting,
         dice: waiting ? [] : state.dice,
+        preRolledDice: waiting ? nextDiceInfo.dice : null,
+        diceQueue: nextDiceInfo.nextQueue,
+        diceSeedState: nextDiceInfo.nextSeedState,
         winner: winner,
         stateVersion: (state.stateVersion || 0) + 1,
         log: [...(state.log || []).slice(-9), `Moved seed`],
@@ -389,12 +391,16 @@ export const applyMove = (state, move) => {
 };
 
 export const passTurn = (state) => {
+    const nextDiceInfo = pullNextDice(state);
     return {
         ...state,
         currentPlayerIndex: (state.currentPlayerIndex + 1) % 2,
         waitingForRoll: true,
         diceUsed: state.level >= 3 ? [false, false] : [false],
         dice: [],
+        preRolledDice: nextDiceInfo.dice,
+        diceQueue: nextDiceInfo.nextQueue,
+        diceSeedState: nextDiceInfo.nextSeedState,
         stateVersion: (state.stateVersion || 0) + 1,
         log: [...(state.log || []).slice(-9), `Turn passed`],
     };
@@ -436,7 +442,8 @@ export const ludoGameEngine = {
         const scrubbed = { ...state };
         delete scrubbed.diceQueue;    // Never send future rolls to clients!
         delete scrubbed.diceSeedState; // Never send RNG state to clients!
-        delete scrubbed.log;           // Log is server debug data only — keeps payload tiny
+        delete scrubbed.preRolledDice; // Never send hidden roll result!
+        delete scrubbed.log;           // Log is server debug data only
         return scrubbed;
     }
 };

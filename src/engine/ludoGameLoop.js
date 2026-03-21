@@ -223,15 +223,14 @@ export const ludoGameLoop = {
                     }
 
                     // Step 1: Tell everyone the player STARTED rolling (visual cue for opponent)
-                    // No await — this fires immediately so the opponent can start a spinning animation.
+                    // We broadcast this immediately, but we no longer wait 400ms.
+                    // The client will still show a brief animation while the 'ROLL_DICE' event 
+                    // travels back, but the user gets the result as fast as their ping permits.
                     broadcastGameEvent(gameId, 'DICE_ROLLING_STARTED', {
                         rollingPlayerIndex: isPlayer1 ? 0 : 1
                     });
 
-                    // Step 2: 400ms window lets opponent render the spinning animation before result
-                    await new Promise(r => setTimeout(r, 400));
-
-                    // Step 3: NOW compute authoritative result (server RNG is never exposed to client)
+                    // Step 2: COMPUTE authoritative result instantly via Pre-Generated roll
                     updatedBoard = ludoGameEngine.rollDice(updatedBoard);
                 } else if (action.type === 'MOVE_PIECE') {
                     if (board.waitingForRoll) {
