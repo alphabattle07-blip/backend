@@ -30,8 +30,8 @@ app.use(express.json());
 // Initialize Socket.IO
 const io = new Server(httpServer, {
     cors: corsOptions,
-    pingInterval: 30000,   // Increased from 20s — gives mobile JS thread more breathing room
-    pingTimeout: 45000,    // Increased from 25s — prevents false disconnects on 3G/4G spikes
+    pingInterval: 25000,   // Heartbeat every 25s
+    pingTimeout: 90000,    // 90s grace period for aggressive Android battery/Doze backgrounding
     connectTimeout: 20000, // How long to wait for initial handshake
 });
 
