@@ -30,9 +30,13 @@ app.use(express.json());
 // Initialize Socket.IO
 const io = new Server(httpServer, {
     cors: corsOptions,
-    pingInterval: 25000,   // Heartbeat every 25s
-    pingTimeout: 90000,    // 90s grace period for aggressive Android battery/Doze backgrounding
-    connectTimeout: 20000, // How long to wait for initial handshake
+    // Heartbeat every 10s — keeps Render's 60s idle-disconnect from ever firing.
+    // Mobile players (Nigeria, Canada) on 4G/LTE have unpredictable packet loss;
+    // a fast ping catches dead connections in 15s instead of the old 115s (25+90).
+    pingInterval: 10000,
+    pingTimeout: 5000,
+    // Give the initial TLS + WebSocket handshake 45s to complete (matches client)
+    connectTimeout: 45000,
 });
 
 // Initialize Socket Manager
