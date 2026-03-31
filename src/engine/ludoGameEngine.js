@@ -56,7 +56,7 @@ const pullNextDice = (state) => {
     return { dice, nextQueue: queue, nextSeedState: currentSeedState };
 };
 
-const initializeGame = (p1Color, p2Color, level = 1, matchSeed = null) => {
+export const initializeGame = (p1Color, p2Color, level = 1, matchSeed = null) => {
     const initialDiceData = generateDiceBatch(level, 50, matchSeed || `match_${Date.now()}_${Math.random()}`);
     let queue = initialDiceData.batch;
     let seedState = initialDiceData.newState;
