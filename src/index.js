@@ -30,11 +30,11 @@ app.use(express.json());
 // Initialize Socket.IO
 const io = new Server(httpServer, {
     cors: corsOptions,
-    // Heartbeat every 10s — keeps Render's 60s idle-disconnect from ever firing.
-    // Mobile players (Nigeria, Canada) on 4G/LTE have unpredictable packet loss;
-    // a fast ping catches dead connections in 15s instead of the old 115s (25+90).
-    pingInterval: 10000,
-    pingTimeout: 5000,
+    // Heartbeat every 25s — keeps Render's 60s idle-disconnect from firing.
+    // Relaxed from 10s/5s to prevent false disconnects on unstable mobile networks
+    // (4G/LTE in Nigeria, Canada). Dead connection detected in ~45s (25+20).
+    pingInterval: 25000,
+    pingTimeout: 20000,
     // Give the initial TLS + WebSocket handshake 45s to complete (matches client)
     connectTimeout: 45000,
 });
