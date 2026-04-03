@@ -223,6 +223,7 @@ export const ludoGameLoop = {
         return entry.lock = entry.lock.then(async () => {
             entry.isLocked = true;
             try {
+                const board = entry.state;
                 // 🌊 Flood Detection
                 const now = Date.now();
                 if (!entry.eventTracker) entry.eventTracker = [];
