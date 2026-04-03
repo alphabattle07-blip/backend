@@ -92,6 +92,7 @@ export const initializeGame = (p1Color, p2Color, level = 1, matchSeed = null) =>
         log: ['Game Started'],
         level: level,
         stateVersion: 0,
+        eventId: 0,
         readyPlayers: { p1: false, p2: false },
         gameStartConfirmed: false,
         countdownStarted: false,
@@ -144,6 +145,7 @@ export const rollDice = (state) => {
         preRolledDice: null, // Revealed
         waitingForRoll: false,
         stateVersion: (state.stateVersion || 0) + 1,
+        eventId: (state.eventId || 0) + 1,
         log: [...(state.log || []).slice(-9), `Rolled [${dice.join(', ')}]`],
     };
 };
@@ -387,6 +389,7 @@ export const applyMove = (state, move) => {
         diceSeedState: nextDiceInfo.nextSeedState,
         winner: winner,
         stateVersion: (state.stateVersion || 0) + 1,
+        eventId: (state.eventId || 0) + 1,
         log: [...(state.log || []).slice(-9), `Moved seed`],
     };
 };
@@ -403,6 +406,7 @@ export const passTurn = (state) => {
         diceQueue: nextDiceInfo.nextQueue,
         diceSeedState: nextDiceInfo.nextSeedState,
         stateVersion: (state.stateVersion || 0) + 1,
+        eventId: (state.eventId || 0) + 1,
         log: [...(state.log || []).slice(-9), `Turn passed`],
     };
 };

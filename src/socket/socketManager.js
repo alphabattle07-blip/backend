@@ -157,17 +157,30 @@ export const getIO = () => {
 export const broadcastGameEvent = async (gameId, type, payload, options = {}) => {
     if (!io) return;
 
-    // 1. Atomic sequence increments
-    const eventId = await redis.incr(`game:${gameId}:eventId`);
-    
-    // Only increment stateVersion if this event actually changes game logic state
-    let stateVersion = null;
-    if (options.isStateChange) {
-        stateVersion = await redis.incr(`game:${gameId}:stateVersion`);
-    } else {
-        // Fetch current to keep it in the payload for reference
-        const current = await redis.get(`game:${gameId}:stateVersion`);
-        stateVersion = current ? parseInt(current) : 0;
+    // Engine acts as the single source of truth for versioning and sequencing
+    let stateVersion = 0;
+    let eventId = 0;
+
+    // Extract stateVersion
+    if (payload && payload.stateVersion !== undefined) {
+        stateVersion = payload.stateVersion;
+    } else if (payload && payload.board && payload.board.stateVersion !== undefined) {
+        stateVersion = payload.board.stateVersion;
+    } else if (options.isStateChange && payload) {
+        stateVersion = payload.stateVersion || 0;
+    }
+
+    // Extract eventId
+    if (payload && payload.eventId !== undefined) {
+        eventId = payload.eventId;
+    } else if (payload && payload.board && payload.board.eventId !== undefined) {
+        eventId = payload.board.eventId;
+    }
+
+    // Strict validation
+    if (options.isStateChange && (!stateVersion || stateVersion === 0)) {
+        console.error(`[SocketManager] CRITICAL: Missing stateVersion for state-changing event ${type} in game ${gameId}!`);
+        throw new Error(`Missing stateVersion for state-changing event`);
     }
 
     const gameEvent = {
@@ -189,8 +202,8 @@ export const broadcastGameEvent = async (gameId, type, payload, options = {}) =>
 export const broadcastScrubbedEvent = async (gameId, type, fullState, options = {}) => {
     if (!io) return;
 
-    const eventId = await redis.incr(`game:${gameId}:eventId`);
-    const stateVersion = await redis.incr(`game:${gameId}:stateVersion`);
+    const eventId = fullState?.eventId || 0;
+    const stateVersion = fullState?.stateVersion || 0;
 
     const room = io.sockets.adapter.rooms.get(gameId);
     if (!room) return;

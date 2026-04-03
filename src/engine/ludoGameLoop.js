@@ -11,6 +11,35 @@ const prisma = new PrismaClient();
 // In-memory storage for active game loops/timers
 // Key: gameId, Value: { timer: NodeJS.Timeout, startTime: number, warningTimer: NodeJS.Timeout, etc. }
 const activeLudoGames = new Map();
+const saveTimeouts = new Map();
+
+function scheduleDebouncedSave(gameId, gameState, force = false) {
+    if (saveTimeouts.has(gameId)) {
+        clearTimeout(saveTimeouts.get(gameId));
+        saveTimeouts.delete(gameId);
+    }
+
+    const saveAction = async () => {
+        try {
+            await prisma.game.update({
+                where: { id: gameId },
+                data: { board: gameState },
+            });
+        } catch (err) {
+            console.error(`[LudoLoop] Failed to save state for ${gameId}:`, err.message);
+        } finally {
+            saveTimeouts.delete(gameId);
+        }
+    };
+
+    if (force) {
+        // Run immediately without timeout
+        saveAction();
+    } else {
+        const timeout = setTimeout(saveAction, 2000); // 2 seconds of inactivity
+        saveTimeouts.set(gameId, timeout);
+    }
+}
 
 const TIME_LIMITS = {
     RULE_ONE: { // Competitive level
@@ -134,9 +163,10 @@ export const ludoGameLoop = {
                     return;
                 }
 
-                // 3. Save & Broadcast
+                // 3. Save & Broadcast (Forced bypass)
                 entry.state = nextBoard;
                 await redis.set(`match:ludo:${gameId}`, JSON.stringify(nextBoard));
+                scheduleDebouncedSave(gameId, nextBoard, true); // Hard save for timeouts
 
                 // Unified Event
                 await broadcastGameEvent(gameId, 'GAME_STATE_UPDATE', 
@@ -214,6 +244,14 @@ export const ludoGameLoop = {
                     return;
                 }
 
+                // Server-Side Version Validation (Stop Spam/Desyncs)
+                if (action.expectedStateVersion !== undefined && board.stateVersion !== undefined) {
+                    if (action.expectedStateVersion !== board.stateVersion) {
+                        console.log(`[LudoLoop] Rejected action due to version mismatch: expected ${action.expectedStateVersion}, actual ${board.stateVersion}`);
+                        return;
+                    }
+                }
+
                 // ... (Engine execution logic here ...)
                 let updatedBoard = { ...board };
                 if (action.type === 'ROLL_DICE') {
@@ -227,7 +265,8 @@ export const ludoGameLoop = {
                     // The client will still show a brief animation while the 'ROLL_DICE' event 
                     // travels back, but the user gets the result as fast as their ping permits.
                     broadcastGameEvent(gameId, 'DICE_ROLLING_STARTED', {
-                        rollingPlayerIndex: isPlayer1 ? 0 : 1
+                        rollingPlayerIndex: isPlayer1 ? 0 : 1,
+                        eventId: board.eventId // Inherit last known engine eventId for cosmetic event
                     });
 
                     // Step 2: COMPUTE authoritative result instantly via Pre-Generated roll
@@ -296,6 +335,7 @@ export const ludoGameLoop = {
 
                 entry.state = updatedBoard;
                 await redis.set(`match:ludo:${gameId}`, JSON.stringify(updatedBoard));
+                scheduleDebouncedSave(gameId, updatedBoard);
 
                 // Unified Event for Action Update (Roll/Move)
                 // Includes seedIndex so client can unlock per-seed interaction lock on confirm.
