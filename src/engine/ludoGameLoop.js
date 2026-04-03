@@ -71,16 +71,20 @@ export const ludoGameLoop = {
             // First check Redis for active state
             const cached = await redis.get(`match:ludo:${gameId}`);
             let gameState = null;
+            let p1Id = null;
+            let p2Id = null;
+
+            const game = await prisma.game.findUnique({ where: { id: gameId } });
+            if (!game) return;
+            p1Id = game.player1Id;
+            p2Id = game.player2Id;
 
             if (cached) {
                 gameState = JSON.parse(cached);
             } else {
-                // Fallback to Prisma if not in Redis
-                const game = await prisma.game.findUnique({ where: { id: gameId } });
-                if (!game) return;
                 gameState = typeof game.board === 'string' ? JSON.parse(game.board) : game.board;
-                // Save to Redis
-                await redis.set(`match:ludo:${gameId}`, JSON.stringify(gameState));
+                // Save to Redis asynchronously
+                redis.set(`match:ludo:${gameId}`, JSON.stringify(gameState)).catch(err => console.error("❌ Redis save failed", err));
             }
 
             entry = {
@@ -88,7 +92,10 @@ export const ludoGameLoop = {
                 lock: Promise.resolve(),
                 isLocked: false,
                 autoRolled: false,
-                timeoutId: null
+                timeoutId: null,
+                player1Id: p1Id,
+                player2Id: p2Id,
+                eventTracker: []
             };
             activeLudoGames.set(gameId, entry);
         }
@@ -117,8 +124,8 @@ export const ludoGameLoop = {
             }, timeToTimeout);
         }
 
-        // MUST sync new timestamps to Redis immediately
-        await redis.set(`match:ludo:${gameId}`, JSON.stringify(board));
+        // MUST sync new timestamps to Redis async
+        redis.set(`match:ludo:${gameId}`, JSON.stringify(board)).catch(err => console.error("❌ Redis save failed", err));
 
         // Broadcast to clients using unified event
         await broadcastGameEvent(gameId, 'TURN_STARTED', {
@@ -143,51 +150,37 @@ export const ludoGameLoop = {
         const entry = activeLudoGames.get(gameId);
         if (!entry) return;
 
-        // Queue timeout processing on the action lock to prevent collisions with player moves
-        entry.lock = entry.lock.then(async () => {
-            entry.isLocked = true;
-            try {
-                const board = entry.state;
-                if (!board || board.winner || board.status === 'COMPLETED') return;
+        const board = entry.state;
+        if (!board || board.winner || board.status === 'COMPLETED') return;
 
-                console.log(`[LudoLoop] Turn timeout triggered for game ${gameId}, player ${board.currentPlayerIndex}`);
+        console.log(`[LudoLoop] Turn timeout triggered for game ${gameId}, player ${board.currentPlayerIndex}`);
 
-                // 1. Authoritative Auto-Play via Engine
-                const nextBoard = ludoGameEngine.handleTurnTimeout(board);
+        try {
+            let actionType;
+            let bestMove = undefined;
 
-                // 2. Check Forfeit
-                const timedOutPlayerIndex = board.currentPlayerIndex;
-                const timedOutPlayer = nextBoard.players[timedOutPlayerIndex];
-                const limits = board.level >= 3 ? TIME_LIMITS.RULE_ONE : TIME_LIMITS.RULE_TWO;
-
-                if (timedOutPlayer.timeouts >= limits.FORFEIT) {
-                    await ludoGameLoop.handleForfeit(gameId, timedOutPlayer.id);
-                    return;
+            if (board.waitingForRoll) {
+                actionType = 'ROLL_DICE';
+            } else {
+                const validMoves = ludoGameEngine.getValidMoves(board);
+                if (validMoves.length > 0) {
+                    actionType = 'MOVE_PIECE';
+                    bestMove = validMoves[0];
+                } else {
+                    actionType = 'PASS_TURN';
                 }
-
-                // 3. Save & Broadcast (Forced bypass)
-                entry.state = nextBoard;
-                await redis.set(`match:ludo:${gameId}`, JSON.stringify(nextBoard));
-                scheduleDebouncedSave(gameId, nextBoard, true); // Hard save for timeouts
-
-                // Unified Event
-                await broadcastGameEvent(gameId, 'GAME_STATE_UPDATE', 
-                    ludoGameEngine.scrubStateForClient(nextBoard), 
-                    { isStateChange: true }
-                );
-
-                // Refresh timer for next phase
-                await ludoGameLoop.startTurnTimer(gameId, null);
-
-            } catch (err) {
-                console.error(`[LudoLoop] Timeout handler error: ${err.message}`);
-            } finally {
-                entry.isLocked = false;
             }
-        }).catch((err) => {
-            console.error(`[LudoLoop] Critical Lock Error in handleTurnTimeout for ${gameId}:`, err);
-            entry.isLocked = false; // Emergency unlock
-        });
+
+            // Simulate the action cleanly through the pipeline
+            await ludoGameLoop.executeAction(gameId, null, {
+                type: actionType,
+                move: bestMove,
+                expectedStateVersion: board.stateVersion,
+                isTimeoutAutoPlay: true
+            });
+        } catch (err) {
+            console.error(`[LudoLoop] Timeout handler error for ${gameId}:`, err);
+        }
     },
 
     handleForfeit: async (gameId, losingLogicalId) => {
@@ -230,13 +223,26 @@ export const ludoGameLoop = {
         return entry.lock = entry.lock.then(async () => {
             entry.isLocked = true;
             try {
-                const board = entry.state;
-                const isPlayer1 = userId === null ? true : await (async () => { // Handle auto-actions
-                    if (userId === 'p1') return true;
-                    if (userId === 'p2') return false;
-                    const game = await prisma.game.findUnique({ where: { id: gameId } });
-                    return game.player1Id === userId;
+                // 🌊 Flood Detection
+                const now = Date.now();
+                if (!entry.eventTracker) entry.eventTracker = [];
+                entry.eventTracker = entry.eventTracker.filter(t => now - t < 1000);
+                entry.eventTracker.push(now);
+                if (entry.eventTracker.length > 10) {
+                    console.warn(`🌊 Event flood detected from ${userId} in ${gameId}`);
+                }
+
+                // 🧠 Memory Authority replacing Prisma I/O
+                const isPlayer1 = userId === null ? (action.isTimeoutAutoPlay ? board.currentPlayerIndex === 0 : true) : (() => {
+                    if (userId === entry.player1Id || userId === 'p1') return true;
+                    if (userId === entry.player2Id || userId === 'p2') return false;
+                    return null;
                 })();
+
+                if (isPlayer1 === null && userId !== null) {
+                    console.log(`[LudoLoop] Rejected action: Socket session ${userId} not a participant in ${gameId}`);
+                    return;
+                }
                 const logicalPlayerId = isPlayer1 ? 'p1' : 'p2';
 
                 // Turn Authentication
@@ -252,6 +258,11 @@ export const ludoGameLoop = {
                         console.log(`[LudoLoop] Rejected action due to version mismatch: expected ${action.expectedStateVersion}, actual ${board.stateVersion}`);
                         return;
                     }
+                }
+
+                // Increase timeout only physically during the autoPlay routine
+                if (action.isTimeoutAutoPlay) {
+                    board.players[board.currentPlayerIndex].timeouts = (board.players[board.currentPlayerIndex].timeouts || 0) + 1;
                 }
 
                 // ... (Engine execution logic here ...)
@@ -306,11 +317,10 @@ export const ludoGameLoop = {
                 if (action.moveId) updatedBoard.players[isPlayer1 ? 0 : 1].lastProcessedMoveId = action.moveId;
 
                 // --- CHECK FOR WINNER ---
-                const game = await prisma.game.findUnique({ where: { id: gameId } });
-                if (updatedBoard.winner && game) {
-                    const winnerLogicalId = updatedBoard.winner; // already a string: 'p1' or 'p2'
-                    const winnerId = winnerLogicalId === 'p1' ? game.player1Id : game.player2Id;
-                    const loserId = winnerLogicalId === 'p1' ? game.player2Id : game.player1Id;
+                if (updatedBoard.winner) {
+                    const winnerLogicalId = updatedBoard.winner; 
+                    const winnerId = winnerLogicalId === 'p1' ? entry.player1Id : entry.player2Id;
+                    const loserId = winnerLogicalId === 'p1' ? entry.player2Id : entry.player1Id;
 
                     await processMatchRewards(winnerId, loserId, gameId, 'ludo');
 
@@ -331,25 +341,34 @@ export const ludoGameLoop = {
 
                     ludoGameLoop.clearTurnTimer(gameId);
                     activeLudoGames.delete(gameId);
-                    await redis.del(`match:ludo:${gameId}`);
+                    redis.del(`match:ludo:${gameId}`).catch(err => console.error("❌ Redis del failed", err));
                     return;
                 }
 
+                // ⚡ Rapid Memory Commit & Broadcast (DB Decoupled)
                 entry.state = updatedBoard;
-                await redis.set(`match:ludo:${gameId}`, JSON.stringify(updatedBoard));
+                redis.set(`match:ludo:${gameId}`, JSON.stringify(updatedBoard)).catch(err => console.error("❌ Redis save failed", err));
                 scheduleDebouncedSave(gameId, updatedBoard);
 
                 // Unified Event for Action Update (Roll/Move)
-                // Includes seedIndex so client can unlock per-seed interaction lock on confirm.
+                // Sending EXACT structured prediction keys to aid front-end mapping.
                 await broadcastGameEvent(gameId, 'LUDO_ACTION_UPDATE', {
-                    type: action.type,                              // echo action type to client
+                    type: action.type,                              
+                    
+                    // Unified safe payload metrics
+                    playerId: isPlayer1 ? entry.player1Id : entry.player2Id,
+                    pieceId: action.type === 'MOVE_PIECE' && action.move ? action.move.seedIndex : undefined,
+                    fromTile: action.type === 'MOVE_PIECE' && action.move ? board.players[board.currentPlayerIndex].seeds[action.move.seedIndex]?.tileIndex : undefined,
+                    toTile: action.type === 'MOVE_PIECE' && action.move ? action.move.targetPos : undefined,
+                    diceValue: action.type === 'ROLL_DICE' ? updatedBoard.dice : (action.type === 'MOVE_PIECE' ? action.move.diceIndices.map(h => board.dice[h]) : undefined),
+                    stateVersion: updatedBoard.stateVersion,        
+
+                    // Classic structured parameters preserving frontend expectations
                     move: action.type === 'MOVE_PIECE' ? action.move : undefined,
                     dice: action.type === 'ROLL_DICE' ? updatedBoard.dice : undefined,
                     diceUsed: action.type === 'ROLL_DICE' ? updatedBoard.diceUsed : undefined,
                     currentPlayerIndex: updatedBoard.currentPlayerIndex,
                     waitingForRoll: updatedBoard.waitingForRoll,
-                    diceUsed: updatedBoard.diceUsed,
-                    stateVersion: updatedBoard.stateVersion,        // board-level version for optimistic check
                     lastProcessedMoveId: action.moveId,
                     actionPlayerIndex: isPlayer1 ? 0 : 1,
                     actionSeedIndex: action.type === 'MOVE_PIECE' && action.move ? action.move.seedIndex : undefined,
@@ -389,16 +408,20 @@ export const ludoGameLoop = {
             // Check Redis first
             const cached = await redis.get(`match:ludo:${gameId}`);
             let gameState = null;
+            let p1Id = null;
+            let p2Id = null;
+
+            const game = await prisma.game.findUnique({ where: { id: gameId } });
+            if (!game || game.status !== 'IN_PROGRESS') return null;
+            p1Id = game.player1Id;
+            p2Id = game.player2Id;
 
             if (cached) {
                 gameState = JSON.parse(cached);
             } else {
-                // Fallback to Prisma
-                const game = await prisma.game.findUnique({ where: { id: gameId } });
-                if (!game || game.status !== 'IN_PROGRESS') return null;
                 gameState = typeof game.board === 'string' ? JSON.parse(game.board) : game.board;
-                // Save to Redis
-                await redis.set(`match:ludo:${gameId}`, JSON.stringify(gameState));
+                // Save to Redis async
+                redis.set(`match:ludo:${gameId}`, JSON.stringify(gameState)).catch(err => console.error("❌ Redis save failed", err));
             }
 
             entry = {
@@ -406,7 +429,10 @@ export const ludoGameLoop = {
                 lock: Promise.resolve(),
                 isLocked: false,
                 autoRolled: false,
-                timeoutId: null
+                timeoutId: null,
+                player1Id: p1Id,
+                player2Id: p2Id,
+                eventTracker: []
             };
             activeLudoGames.set(gameId, entry);
         }
@@ -447,7 +473,10 @@ export const ludoGameLoop = {
                         lock: Promise.resolve(),
                         isLocked: false,
                         autoRolled: false,
-                        timeoutId: null
+                        timeoutId: null,
+                        player1Id: match.player1Id,
+                        player2Id: match.player2Id,
+                        eventTracker: []
                     });
 
                     // Resume timer

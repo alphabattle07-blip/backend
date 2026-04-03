@@ -1,5 +1,5 @@
 import { ludoGameLoop } from '../engine/ludoGameLoop.js';
-import { ludoGameEngine } from '../engine/ludoGameEngine.js';
+import { ludoGameEngine, LOGIC_VERSION } from '../engine/ludoGameEngine.js';
 import { whotGameEngine } from '../engine/whotGameEngine.js';
 import { whotGameLoop } from '../engine/whotGameLoop.js';
 import { PrismaClient } from '../generated/prisma/index.js';
@@ -34,6 +34,14 @@ export const initializeSocket = (socketIo) => {
             userSockets.get(userId).add(socket.id);
             socketUser.set(socket.id, userId);
             console.log(`[Socket] Successfully registered user ${userId} to socket ${socket.id}`);
+        });
+
+        socket.on('LOGIC_VERSION_CHECK', (clientVersion) => {
+            if (clientVersion !== LOGIC_VERSION) {
+                console.error(`[Socket] Logic version mismatch. Client: ${clientVersion}, Server: ${LOGIC_VERSION}. Disconnecting.`);
+                socket.emit('LOGIC_VERSION_MISMATCH');
+                socket.disconnect(true);
+            }
         });
 
         socket.on('joinGame', (gameId) => {
