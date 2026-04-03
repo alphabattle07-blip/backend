@@ -158,16 +158,14 @@ export const broadcastGameEvent = async (gameId, type, payload, options = {}) =>
     if (!io) return;
 
     // Engine acts as the single source of truth for versioning and sequencing
-    let stateVersion = 0;
-    let eventId = 0;
+    let stateVersion = undefined;
+    let eventId = undefined;
 
     // Extract stateVersion
     if (payload && payload.stateVersion !== undefined) {
         stateVersion = payload.stateVersion;
     } else if (payload && payload.board && payload.board.stateVersion !== undefined) {
         stateVersion = payload.board.stateVersion;
-    } else if (options.isStateChange && payload) {
-        stateVersion = payload.stateVersion || 0;
     }
 
     // Extract eventId
@@ -178,14 +176,14 @@ export const broadcastGameEvent = async (gameId, type, payload, options = {}) =>
     }
 
     // Strict validation
-    if (options.isStateChange && (!stateVersion || stateVersion === 0)) {
-        console.error(`[SocketManager] CRITICAL: Missing stateVersion for state-changing event ${type} in game ${gameId}!`);
+    if (options.isStateChange && stateVersion === undefined) {
+        console.error(`[SocketManager] CRITICAL: Missing stateVersion for state-changing event ${type} in game ${gameId}! payload keys:`, Object.keys(payload || {}));
         throw new Error(`Missing stateVersion for state-changing event`);
     }
 
     const gameEvent = {
-        eventId,
-        stateVersion,
+        eventId: eventId !== undefined ? eventId : 0,
+        stateVersion: stateVersion !== undefined ? stateVersion : 0,
         type,
         payload,
         serverTime: Date.now()
