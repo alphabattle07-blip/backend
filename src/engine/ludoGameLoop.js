@@ -125,8 +125,10 @@ export const ludoGameLoop = {
             whoseTurn: board.players[board.currentPlayerIndex].id,
             timeLimit: limits.TOTAL,
             turnStartTime: board.turnStartTime,
-            redAt: board.redAt
-        }, { isStateChange: true }); // Atomic stateVersion increment
+            redAt: board.redAt,
+            stateVersion: board.stateVersion,
+            eventId: board.eventId
+        }, { isStateChange: true }); // Pass engine versions
     },
 
     clearTurnTimer: (gameId) => {
@@ -208,7 +210,7 @@ export const ludoGameLoop = {
             }
         });
 
-        await broadcastGameEvent(gameId, 'GAME_ENDED', { winnerId, reason: 'forfeit' }, { isStateChange: true });
+        await broadcastGameEvent(gameId, 'GAME_ENDED', { winnerId, reason: 'forfeit' });
 
         // --- ARCHIVE CHAT ---
         chatRepository.persistMatchChat(gameId);
@@ -322,7 +324,7 @@ export const ludoGameLoop = {
                         }
                     });
 
-                    await broadcastGameEvent(gameId, 'GAME_ENDED', { winnerId }, { isStateChange: true });
+                    await broadcastGameEvent(gameId, 'GAME_ENDED', { winnerId });
 
                     // --- ARCHIVE CHAT ---
                     chatRepository.persistMatchChat(gameId);
