@@ -367,7 +367,7 @@ export const ludoGameLoop = {
                     // Classic structured parameters preserving frontend expectations
                     move: action.type === 'MOVE_PIECE' ? action.move : undefined,
                     dice: action.type === 'ROLL_DICE' ? updatedBoard.dice : undefined,
-                    diceUsed: action.type === 'ROLL_DICE' ? updatedBoard.diceUsed : undefined,
+                    diceUsed: updatedBoard.diceUsed, // Always send — client overwrites unconditionally
                     currentPlayerIndex: updatedBoard.currentPlayerIndex,
                     waitingForRoll: updatedBoard.waitingForRoll,
                     lastProcessedMoveId: action.moveId,
