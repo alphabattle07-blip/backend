@@ -222,27 +222,31 @@ export const getValidMoves = (state) => {
     // 2. Combination Logic
     const activeDiceCount = state.dice.filter((_, i) => !state.diceUsed[i]).length;
     if (activeDiceCount === 2) {
+        const d0_moves = singleMoves.filter(m => m.diceIndices.includes(0));
+        const d1_moves = singleMoves.filter(m => m.diceIndices.includes(1));
         const movableSeedIndices = [...new Set(singleMoves.map(m => m.seedIndex))];
 
-        if (movableSeedIndices.length === 1) {
-            const seedIndex = movableSeedIndices[0];
-            const seed = player.seeds[seedIndex];
+        const canSplit = movableSeedIndices.length > 1 && d0_moves.length > 0 && d1_moves.length > 0;
 
-            let combinedTarget;
+        if (!canSplit) {
+            const combinedMoves = [];
+            for (const seedIndex of movableSeedIndices) {
+                const seed = player.seeds[seedIndex];
+                let combinedTarget;
 
-            if (seed.zone === 'HOME') {
-                if (state.dice.includes(6)) {
+                if (seed.zone === 'HOME') {
+                    if (state.dice.includes(6)) {
+                        const totalDiceValue = state.dice[0] + state.dice[1];
+                        combinedTarget = totalDiceValue - 6;
+                    }
+                } else {
                     const totalDiceValue = state.dice[0] + state.dice[1];
-                    combinedTarget = totalDiceValue - 6;
+                    combinedTarget = seed.tileIndex + totalDiceValue;
                 }
-            } else {
-                const totalDiceValue = state.dice[0] + state.dice[1];
-                combinedTarget = seed.tileIndex + totalDiceValue;
-            }
 
-            if (combinedTarget !== undefined && combinedTarget <= 56) {
-                let nextZone = combinedTarget > 51 ? 'FINISH' : 'TRACK';
-                let isCapture = false;
+                if (combinedTarget !== undefined && combinedTarget <= 56) {
+                    let nextZone = combinedTarget > 51 ? 'FINISH' : 'TRACK';
+                    let isCapture = false;
 
                     if (nextZone === 'TRACK') {
                         const opponentIndex = (state.currentPlayerIndex + 1) % 2;
@@ -258,14 +262,16 @@ export const getValidMoves = (state) => {
                         }
                     }
 
-                    return [{
+                    combinedMoves.push({
                         seedIndex: seedIndex,
-                        diceIndices: [0, 1], // Mark both used
+                        diceIndices: [0, 1], 
                         targetZone: nextZone,
                         targetPos: combinedTarget,
                         isCapture: isCapture
-                    }];
+                    });
+                }
             }
+            if (combinedMoves.length > 0) return combinedMoves;
         }
     }
 
