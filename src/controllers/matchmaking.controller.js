@@ -7,10 +7,23 @@ import { ludoGameLoop } from '../engine/ludoGameLoop.js';
 const prisma = new PrismaClient();
 
 // Store for matchmaking queue
-const matchmakingQueue = new Map(); // userId -> { rating, timestamp, gameType }
+const matchmakingQueue = new Map(); // userId -> { rating, timestamp, gameType, tier? }
 
 // Store for found matches to avoid DB polling leaks
 const matchedGames = new Map(); // userId -> { game, timestamp }
+
+// Warrior+ tier threshold for Ludo
+const LUDO_WARRIOR_RATING = 1750;
+
+/**
+ * Resolve a user's Ludo tier from their game-specific rating.
+ * Uses GameStats.rating for 'ludo', falls back to global User.rating.
+ */
+const getLudoTier = (user) => {
+    const ludoStats = (user.gameStats || []).find(s => s.gameId === 'ludo');
+    const ludoRating = ludoStats?.rating ?? user.rating ?? 1000;
+    return ludoRating >= LUDO_WARRIOR_RATING ? 'warrior' : 'standard';
+};
 
 /**
  * Calculate rating difference between two players
@@ -20,14 +33,20 @@ const getRatingDifference = (rating1, rating2) => {
 };
 
 /**
- * Find the best match for a player based on rating proximity
+ * Find the best match for a player based on rating proximity.
+ * For Ludo, enforces tier separation (Warrior+ only matches Warrior+).
  */
-const findBestMatch = (playerRating, gameType, excludeUserId) => {
+const findBestMatch = (playerRating, gameType, excludeUserId, tier = null) => {
     let bestMatch = null;
     let smallestDifference = Infinity;
 
     for (const [userId, data] of matchmakingQueue.entries()) {
         if (userId === excludeUserId || data.gameType !== gameType) {
+            continue;
+        }
+
+        // Ludo tier separation: Warrior+ only matches Warrior+, Standard only matches Standard
+        if (gameType === 'ludo' && tier && data.tier !== tier) {
             continue;
         }
 
@@ -78,8 +97,11 @@ export const startMatchmaking = async (req, res) => {
         }
 
 
-        // Try to find an existing match
-        const bestMatch = findBestMatch(user.rating, gameType, userId);
+        // Resolve Ludo tier for tier-separated matchmaking
+        const ludoTier = gameType === 'ludo' ? getLudoTier(user) : null;
+
+        // Try to find an existing match (Ludo: tier-filtered)
+        const bestMatch = findBestMatch(user.rating, gameType, userId, ludoTier);
 
         if (bestMatch) {
             // Get opponent details
@@ -121,7 +143,9 @@ export const startMatchmaking = async (req, res) => {
                 whotGameLoop.startTurnTimer(game.id, matchState.turnPlayer);
 
             } else {
-                const gameData = initializeGameData(gameType, opponent, user);
+                // Ludo: Warrior+ tier (both players ≥1750) gets level 3 rules (2 dice, no safe tiles, capture boost)
+                const ludoConfig = gameType === 'ludo' ? { level: ludoTier === 'warrior' ? 3 : 2 } : {};
+                const gameData = initializeGameData(gameType, opponent, user, ludoConfig);
                 game = await prisma.game.create({
                     data: {
                         gameType,
@@ -165,11 +189,12 @@ export const startMatchmaking = async (req, res) => {
                 message: 'Match found!'
             });
         } else {
-            // No match found, add to queue
+            // No match found, add to queue (Ludo includes tier for separation)
             matchmakingQueue.set(userId, {
                 rating: user.rating,
                 timestamp: Date.now(),
-                gameType
+                gameType,
+                ...(gameType === 'ludo' ? { tier: ludoTier } : {})
             });
 
             return res.json({
@@ -265,7 +290,7 @@ export const checkMatchmakingStatus = async (req, res) => {
 
         // 3. User is still in queue, try to find a match using in-memory rating
         const queueData = matchmakingQueue.get(userId);
-        const bestMatch = findBestMatch(queueData.rating, gameType, userId);
+        const bestMatch = findBestMatch(queueData.rating, gameType, userId, queueData.tier || null);
 
         if (bestMatch) {
             // Get both players' full details to initialize the game
@@ -312,7 +337,9 @@ export const checkMatchmakingStatus = async (req, res) => {
                 whotGameLoop.startTurnTimer(game.id, matchState.turnPlayer);
 
             } else {
-                const gameData = initializeGameData(gameType, user, opponent);
+                // Ludo: Use tier from the queue entry to determine level
+                const ludoConfig = gameType === 'ludo' ? { level: queueData.tier === 'warrior' ? 3 : 2 } : {};
+                const gameData = initializeGameData(gameType, user, opponent, ludoConfig);
                 game = await prisma.game.create({
                     data: {
                         gameType,

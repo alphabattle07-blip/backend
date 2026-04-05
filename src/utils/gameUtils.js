@@ -42,7 +42,7 @@ const shuffleArray = (array) => {
     return shuffled;
 };
 
-export const initializeGameData = (gameType, player1, player2) => {
+export const initializeGameData = (gameType, player1, player2, config = {}) => {
     const updateData = {};
 
     if (gameType === 'ayo') {
@@ -51,7 +51,7 @@ export const initializeGameData = (gameType, player1, player2) => {
     } else if (gameType === 'ludo') {
         const p1Color = 'blue';
         const p2Color = 'green';
-        const level = 2; // Default Standard Level
+        const level = config.level || 2; // Warrior+ (≥1750 rating) = level 3, Standard = level 2
 
         updateData.board = initLudoGame(p1Color, p2Color, level);
         updateData.currentTurn = player1.id;
