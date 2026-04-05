@@ -122,9 +122,6 @@ export const rollDice = (state) => {
     const player = newPlayers[state.currentPlayerIndex];
     let consecutiveNoSixes = player.consecutiveNoSixes || 0;
     
-    // Clear justEmerged flag at start of new roll
-    player.seeds.forEach(s => { s.justEmerged = false; });
-    
     const activeCount = player.seeds.filter(s => s.zone !== 'HOME' && !(s.zone === 'FINISH' && s.tileIndex === 56)).length;
 
     if (activeCount === 0) {
@@ -184,14 +181,6 @@ const pushSingleMove = (state, singleMoves, player, sIdx, dIdx, nextPos) => {
                     const oppAbsIndex = getAbsoluteIndex(opponent.color, oppSeed.tileIndex);
                     return absIndex === oppAbsIndex;
                 });
-            }
-
-            // Aggressive mode check: a seed brought out of home cannot capture immediately unless double 6
-            if (state.level >= 3 && isCapture && player.seeds[sIdx].justEmerged) {
-                const isDoubleSix = state.dice.length >= 2 && state.dice[0] === 6 && state.dice[1] === 6;
-                if (!isDoubleSix) {
-                    return; // Disallow this capture move
-                }
             }
         }
         
@@ -301,10 +290,6 @@ export const applyMove = (state, move) => {
     
     targetSeed.zone = move.targetZone;
     targetSeed.tileIndex = move.targetPos;
-    
-    if (move.targetZone === 'TRACK' && oldPosition === -1) {
-        targetSeed.justEmerged = true;
-    }
 
     let stateChanged = true;
 
