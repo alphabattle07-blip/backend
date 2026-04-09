@@ -183,8 +183,8 @@ export const ludoGameLoop = {
         }
     },
 
-    handleForfeit: async (gameId, losingLogicalId) => {
-        console.log(`[LudoLoop] Forfeit ${losingLogicalId} in game ${gameId}`);
+    handleForfeit: async (gameId, losingLogicalId, reason = 'forfeit') => {
+        console.log(`[LudoLoop] Forfeit ${losingLogicalId} in game ${gameId} (reason: ${reason})`);
         const game = await prisma.game.findUnique({ where: { id: gameId } });
         if (!game) return;
 
@@ -203,7 +203,7 @@ export const ludoGameLoop = {
             }
         });
 
-        await broadcastGameEvent(gameId, 'GAME_ENDED', { winnerId, reason: 'forfeit' });
+        await broadcastGameEvent(gameId, 'GAME_ENDED', { winnerId, reason });
 
         // --- ARCHIVE CHAT ---
         chatRepository.persistMatchChat(gameId);
@@ -248,6 +248,31 @@ export const ludoGameLoop = {
 
                 // Turn Authentication
                 const actualLogicalPlayerId = board.players[board.currentPlayerIndex].id;
+                
+                // Inactivity Tracker / Rage Quit Protocol
+                let shouldForfeit = false;
+                if (userId !== null) {
+                    // Reset timeouts on real player input
+                    if (board.players[board.currentPlayerIndex]) {
+                        board.players[board.currentPlayerIndex].timeouts = 0;
+                    }
+                } else if (action.isTimeoutAutoPlay) {
+                    const currentP = board.players[board.currentPlayerIndex];
+                    currentP.timeouts = (currentP.timeouts || 0) + 1;
+                    
+                    // Warrior+ (level >= 3) = 3 turns (6 timeouts). Below = 4 turns (8 timeouts).
+                    const threshold = (board.level || 1) >= 3 ? 6 : 8;
+                    if (currentP.timeouts >= threshold) {
+                        shouldForfeit = true;
+                    }
+                }
+
+                if (shouldForfeit) {
+                    console.log(`[LudoLoop] Player ${actualLogicalPlayerId} exceeded timeouts. Auto-forfeiting.`);
+                    await ludoGameLoop.handleForfeit(gameId, actualLogicalPlayerId, 'rage_quit');
+                    return;
+                }
+
                 if (logicalPlayerId !== actualLogicalPlayerId && userId !== null) {
                     console.log(`[LudoLoop] Turn violation: User ${userId} tried to play but it is ${actualLogicalPlayerId}'s turn.`);
                     return;
