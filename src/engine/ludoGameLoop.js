@@ -407,9 +407,16 @@ export const ludoGameLoop = {
                 const turnChanged = board.currentPlayerIndex !== updatedBoard.currentPlayerIndex;
                 const isBonusTurn = !board.waitingForRoll && updatedBoard.waitingForRoll && !turnChanged;
                 const phaseChangedToMove = board.waitingForRoll && !updatedBoard.waitingForRoll;
+                const stillHasMoves = !updatedBoard.waitingForRoll && !turnChanged;
 
                 if (turnChanged || isBonusTurn || phaseChangedToMove) {
                     await ludoGameLoop.startTurnTimer(gameId, null);
+                } else if (stillHasMoves && action.isTimeoutAutoPlay) {
+                    // Fast consecutive auto-play to quickly finish multi-dice moves (e.g. Warrior mode)
+                    console.log(`[LudoLoop] Auto-play fast continuation for ${gameId}`);
+                    entry.timeoutId = setTimeout(() => {
+                        ludoGameLoop.handleTurnTimeout(gameId, updatedBoard.players[updatedBoard.currentPlayerIndex].id);
+                    }, 1500);
                 }
 
             } catch (err) {
