@@ -250,29 +250,12 @@ export const ludoGameLoop = {
                 const actualLogicalPlayerId = board.players[board.currentPlayerIndex].id;
                 
                 // Inactivity Tracker / Rage Quit Protocol
-                let shouldForfeit = false;
-                if (userId !== null) {
-                    // Reset timeouts on real player input
-                    if (board.players[board.currentPlayerIndex]) {
-                        board.players[board.currentPlayerIndex].timeouts = 0;
-                    }
-                } else if (action.isTimeoutAutoPlay) {
-                    const currentP = board.players[board.currentPlayerIndex];
-                    currentP.timeouts = (currentP.timeouts || 0) + 1;
-                    
-                    // Warrior+ (level >= 3) = 3 missed turns/opportunities (6 timeouts). Below = 4 missed turns (8 timeouts).
-                    const threshold = (board.level || 1) >= 3 ? 6 : 8;
-                    if (currentP.timeouts >= threshold) {
-                        shouldForfeit = true;
-                    }
+                // Reset opportunities on any real player input.
+                if (userId !== null && board.players[board.currentPlayerIndex]) {
+                    board.players[board.currentPlayerIndex].timeouts = 0;
                 }
 
-                if (shouldForfeit) {
-                    console.log(`[LudoLoop] Player ${actualLogicalPlayerId} exceeded timeouts. Auto-forfeiting.`);
-                    await ludoGameLoop.handleForfeit(gameId, actualLogicalPlayerId, 'rage_quit');
-                    return;
-                }
-
+                // Turn Authentication
                 if (logicalPlayerId !== actualLogicalPlayerId && userId !== null) {
                     console.log(`[LudoLoop] Turn violation: User ${userId} tried to play but it is ${actualLogicalPlayerId}'s turn.`);
                     return;
@@ -284,11 +267,6 @@ export const ludoGameLoop = {
                         console.log(`[LudoLoop] Rejected action due to version mismatch: expected ${action.expectedStateVersion}, actual ${board.stateVersion}`);
                         return;
                     }
-                }
-
-                // Increase timeout only physically during the autoPlay routine
-                if (action.isTimeoutAutoPlay) {
-                    board.players[board.currentPlayerIndex].timeouts = (board.players[board.currentPlayerIndex].timeouts || 0) + 1;
                 }
 
                 // ... (Engine execution logic here ...)
@@ -408,6 +386,20 @@ export const ludoGameLoop = {
                 const isBonusTurn = !board.waitingForRoll && updatedBoard.waitingForRoll && !turnChanged;
                 const phaseChangedToMove = board.waitingForRoll && !updatedBoard.waitingForRoll;
                 const stillHasMoves = !updatedBoard.waitingForRoll && !turnChanged;
+
+                // ── Count missed opportunities (1 count = 1 full missed turn) ──────────────
+                // Only increment when the auto-play FULLY consumed the turn and passed it to the opponent.
+                if (action.isTimeoutAutoPlay && turnChanged) {
+                    const timedOutPlayer = updatedBoard.players[board.currentPlayerIndex];
+                    timedOutPlayer.timeouts = (timedOutPlayer.timeouts || 0) + 1;
+                    // Warrior+ = 3 missed opportunities. Below Warrior = 4.
+                    const threshold = (board.level || 1) >= 3 ? 3 : 4;
+                    if (timedOutPlayer.timeouts >= threshold) {
+                        console.log(`[LudoLoop] Player ${board.players[board.currentPlayerIndex].id} missed ${threshold} full turns. Auto-forfeiting.`);
+                        await ludoGameLoop.handleForfeit(gameId, board.players[board.currentPlayerIndex].id, 'rage_quit');
+                        return;
+                    }
+                }
 
                 if (turnChanged || isBonusTurn || phaseChangedToMove) {
                     await ludoGameLoop.startTurnTimer(gameId, null);
