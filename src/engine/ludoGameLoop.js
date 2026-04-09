@@ -260,8 +260,8 @@ export const ludoGameLoop = {
                     const currentP = board.players[board.currentPlayerIndex];
                     currentP.timeouts = (currentP.timeouts || 0) + 1;
                     
-                    // Warrior+ (level >= 3) = 6 turns (12 timeouts). Below = 8 turns (16 timeouts).
-                    const threshold = (board.level || 1) >= 3 ? 12 : 16;
+                    // Warrior+ (level >= 3) = 3 missed turns/opportunities (6 timeouts). Below = 4 missed turns (8 timeouts).
+                    const threshold = (board.level || 1) >= 3 ? 6 : 8;
                     if (currentP.timeouts >= threshold) {
                         shouldForfeit = true;
                     }
