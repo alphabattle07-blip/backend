@@ -151,7 +151,7 @@ export const whotGameLoop = {
                 await broadcastGameEvent(gameId, 'MOVE_CONFIRMED', { 
                     moveId: move.moveId, 
                     playerId 
-                }, { isStateChange: true });
+                }, { isStateChange: false });
 
                 // 2. Opponent Move (Unified)
                 let actionType = 'UNKNOWN';
@@ -213,7 +213,7 @@ export const whotGameLoop = {
         await broadcastGameEvent(gameId, 'TURN_STARTED', {
             whoseTurn: currentPlayerId,
             timeLimit: entry.state.turnDuration
-        }, { isStateChange: true });
+        }, { isStateChange: false });
     },
 
     clearTurnTimer: (gameId) => {
@@ -243,7 +243,7 @@ export const whotGameLoop = {
                 await redis.set(`match:${gameId}`, JSON.stringify(minimalState));
 
                 // 1. Success Broadcast
-                await broadcastGameEvent(gameId, 'MOVE_CONFIRMED', { moveId: 'auto', playerId }, { isStateChange: true });
+                await broadcastGameEvent(gameId, 'MOVE_CONFIRMED', { moveId: 'auto', playerId }, { isStateChange: false });
 
                 // 2. Opponent Move Logic
                 const newPileLen = nextState.discardPile.length;
@@ -307,7 +307,7 @@ export const whotGameLoop = {
             }
         });
 
-        await broadcastGameEvent(gameId, 'GAME_ENDED', { winnerId }, { isStateChange: true });
+        await broadcastGameEvent(gameId, 'GAME_ENDED', { winnerId }, { isStateChange: false });
 
         chatRepository.persistMatchChat(gameId);
         whotGameLoop.clearTurnTimer(gameId);
@@ -338,7 +338,7 @@ export const whotGameLoop = {
             winnerId,
             loserId: losingPlayerId,
             message: "Opponent timed out too many times."
-        }, { isStateChange: true });
+        }, { isStateChange: false });
 
         chatRepository.persistMatchChat(gameId);
         whotGameLoop.clearTurnTimer(gameId);
