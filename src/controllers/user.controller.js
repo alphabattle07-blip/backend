@@ -65,7 +65,9 @@ export const register = async (req, res) => {
       data: {
         email,
         password: hashedPassword,
-        name
+        name,
+        battleBonus: 1000, // Initial welcome bonus matching Welcome UI
+        rating: 1000      // Starting global rating
       },
       select: {
         id: true,
