@@ -4,6 +4,7 @@ import { PrismaClient } from '../generated/prisma/index.js';
 import { whotGameEngine } from './whotGameEngine.js';
 import { processMatchRewards } from '../utils/gameUtils.js';
 import { chatRepository } from '../chat/chatRepository.js';
+import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -135,7 +136,19 @@ export const whotGameLoop = {
                 const validation = whotGameEngine.validateMove(state, playerId, move);
                 if (!validation.valid) throw new Error(validation.reason);
 
+                // Prevent executing the exact same move multiple times from clients
+                const actionKey = `${playerId}:${move.timestamp}`;
+                if (state.lastProcessedActionId === actionKey) {
+                    console.log(`[WhotLoop] Ignored duplicate move action ${actionKey}`);
+                    return state;
+                }
+
                 const nextState = whotGameEngine.applyMove(state, playerId, move);
+                
+                // Track backend sequence
+                nextState.lastProcessedActionId = actionKey;
+                nextState.stateVersion = (state.stateVersion || 0) + 1;
+                nextState.eventId = randomUUID(); // ID for state update broadcast
 
                 // ATOMIC TIMER RESET
                 nextState.turnStartTime = Date.now();
@@ -163,6 +176,7 @@ export const whotGameLoop = {
                     : null;
 
                 await broadcastGameEvent(gameId, 'OPPONENT_MOVE', {
+                    eventId: randomUUID(),
                     excludePlayerId: playerId,
                     type: actionType,
                     cardId: move.cardId,
@@ -211,6 +225,7 @@ export const whotGameLoop = {
         }
 
         await broadcastGameEvent(gameId, 'TURN_STARTED', {
+            eventId: randomUUID(),
             whoseTurn: currentPlayerId,
             timeLimit: entry.state.turnDuration
         }, { isStateChange: false });
@@ -236,6 +251,8 @@ export const whotGameLoop = {
 
                 const nextState = whotGameEngine.handleTurnTimeout(state);
                 nextState.turnStartTime = Date.now();
+                nextState.stateVersion = (state.stateVersion || 0) + 1;
+                nextState.eventId = randomUUID();
 
                 entry.state = nextState;
                 const minimalState = { ...nextState };
@@ -243,7 +260,11 @@ export const whotGameLoop = {
                 await redis.set(`match:${gameId}`, JSON.stringify(minimalState));
 
                 // 1. Success Broadcast
-                await broadcastGameEvent(gameId, 'MOVE_CONFIRMED', { moveId: 'auto', playerId }, { isStateChange: false });
+                await broadcastGameEvent(gameId, 'MOVE_CONFIRMED', { 
+                    eventId: randomUUID(),
+                    moveId: 'auto', 
+                    playerId 
+                }, { isStateChange: false });
 
                 // 2. Opponent Move Logic
                 const newPileLen = nextState.discardPile.length;
@@ -252,6 +273,7 @@ export const whotGameLoop = {
                 if (newPileLen > oldPileLen) {
                     const playedCard = nextState.discardPile[newPileLen - 1];
                     await broadcastGameEvent(gameId, 'OPPONENT_MOVE', {
+                        eventId: randomUUID(),
                         excludePlayerId: playerId,
                         type: 'CARD_PLAYED',
                         cardId: playedCard.id,
@@ -259,6 +281,7 @@ export const whotGameLoop = {
                     }, { isStateChange: false });
                 } else {
                     await broadcastGameEvent(gameId, 'OPPONENT_MOVE', {
+                        eventId: randomUUID(),
                         excludePlayerId: playerId,
                         type: 'PICK_CARD'
                     }, { isStateChange: false });

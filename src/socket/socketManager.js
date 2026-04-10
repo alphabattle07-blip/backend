@@ -4,7 +4,9 @@ import { whotGameEngine } from '../engine/whotGameEngine.js';
 import { whotGameLoop } from '../engine/whotGameLoop.js';
 import { PrismaClient } from '../generated/prisma/index.js';
 import { initializeChatSocket } from '../chat/chatSocket.js';
+import { chatRepository } from '../chat/chatRepository.js';
 import redis from '../utils/redis.js';
+import { randomUUID } from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -208,7 +210,7 @@ export const broadcastGameEvent = async (gameId, type, payload, options = {}) =>
 export const broadcastScrubbedEvent = async (gameId, type, fullState, options = {}) => {
     if (!io) return;
 
-    const eventId = fullState?.eventId || 0;
+    const eventId = fullState?.eventId || randomUUID();
     const stateVersion = fullState?.stateVersion || 0;
 
     const room = io.sockets.adapter.rooms.get(gameId);
