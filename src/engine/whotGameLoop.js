@@ -155,6 +155,14 @@ export const whotGameLoop = {
                 nextState.warningYellowAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 7000 : 10000);
                 nextState.warningRedAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 14000 : 20000);
 
+                nextState.lastAction = {
+                    type: actionType,
+                    playerId,
+                    cardId: move.cardId,
+                    card: playedCard,
+                    suitChoice: move.calledSuit
+                };
+
                 entry.state = nextState;
                 const minimalState = { ...nextState };
                 delete minimalState.processedMoves;
@@ -253,6 +261,17 @@ export const whotGameLoop = {
                 nextState.turnStartTime = Date.now();
                 nextState.stateVersion = (state.stateVersion || 0) + 1;
                 nextState.eventId = randomUUID();
+
+                const actionTypeTimeout = nextState.discardPile.length > state.discardPile.length ? 'CARD_PLAYED' : 'PICK_CARD';
+                const playedCardTimeout = actionTypeTimeout === 'CARD_PLAYED' ? nextState.discardPile[nextState.discardPile.length - 1] : null;
+
+                nextState.lastAction = {
+                    type: actionTypeTimeout,
+                    playerId,
+                    cardId: playedCardTimeout ? playedCardTimeout.id : null,
+                    card: playedCardTimeout,
+                    suitChoice: playedCardTimeout && playedCardTimeout.number === 20 ? 'circle' : undefined
+                };
 
                 entry.state = nextState;
                 const minimalState = { ...nextState };

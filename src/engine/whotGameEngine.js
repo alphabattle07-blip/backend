@@ -561,6 +561,7 @@ export const whotGameEngine = {
             warningRedAt: matchState.warningRedAt || 0,
             timeoutCount: matchState.timeoutCount || {},
             rankType: matchState.rankType || 'casual',
+            currentPlayerId: matchState.turnPlayer,
             allCards: [
                 ...myHand,
                 ...oppHand,
