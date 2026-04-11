@@ -155,6 +155,15 @@ export const whotGameLoop = {
                 nextState.warningYellowAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 7000 : 10000);
                 nextState.warningRedAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 14000 : 20000);
 
+                // Determine action type and played card for broadcasts
+                let actionType = 'UNKNOWN';
+                if (move.type === 'PLAY_CARD') actionType = 'CARD_PLAYED';
+                else if (move.type === 'DRAW') actionType = 'PICK_CARD';
+
+                const playedCard = move.type === 'PLAY_CARD'
+                    ? nextState.discardPile[nextState.discardPile.length - 1]
+                    : null;
+
                 nextState.lastAction = {
                     type: actionType,
                     playerId,
@@ -175,14 +184,6 @@ export const whotGameLoop = {
                 }, { isStateChange: false });
 
                 // 2. Opponent Move (Unified)
-                let actionType = 'UNKNOWN';
-                if (move.type === 'PLAY_CARD') actionType = 'CARD_PLAYED';
-                else if (move.type === 'DRAW') actionType = 'PICK_CARD';
-
-                const playedCard = move.type === 'PLAY_CARD'
-                    ? nextState.discardPile[nextState.discardPile.length - 1]
-                    : null;
-
                 await broadcastGameEvent(gameId, 'OPPONENT_MOVE', {
                     eventId: randomUUID(),
                     excludePlayerId: playerId,
