@@ -4,6 +4,7 @@
  * Supports two rule sets:
  *   - Rule 1 (Standard): 54-card deck, all specials including Whot
  *   - Rule 2 (Aggressive/Warrior+): 49-card deck, no Whot, continuation for 2/14, 5/8 normal
+ *   -just in case
  */
 
 const SUIT_CARDS = {
