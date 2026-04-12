@@ -129,7 +129,8 @@ export const startMatchmaking = async (req, res) => {
                 const highestRating = Math.max(opponent.rating || 0, user.rating || 0);
                 const config = {
                     gameRankType: highestRating >= 1750 ? 'competitive' : 'casual',
-                    ruleVersion: highestRating >= 1750 ? 'rule2' : 'rule1'
+                    // Force rule1 for all tiers to prevent confusion with missing special card effects
+                    ruleVersion: 'rule1'
                 };
                 const matchState = await whotGameLoop.initializeMatch(game.id, game.player1, game.player2, config);
                 game = await prisma.game.update({
@@ -323,7 +324,8 @@ export const checkMatchmakingStatus = async (req, res) => {
                 const highestRating = Math.max(user.rating || 0, opponent.rating || 0);
                 const config = {
                     gameRankType: highestRating >= 1750 ? 'competitive' : 'casual',
-                    ruleVersion: highestRating >= 1750 ? 'rule2' : 'rule1'
+                    // Force rule1 for all tiers to prevent confusion with missing special card effects
+                    ruleVersion: 'rule1'
                 };
                 const matchState = await whotGameLoop.initializeMatch(game.id, game.player1, game.player2, config);
                 game = await prisma.game.update({

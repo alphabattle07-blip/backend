@@ -205,6 +205,11 @@ export const whotGameLoop = {
                 return nextState;
             } catch (err) {
                 console.error(`[WhotLoop] Move error: ${err.message}`);
+                // Emit rejection to the specific player so their UI can reset and show a toast
+                await broadcastGameEvent(gameId, 'MOVE_REJECTED', {
+                    playerId,
+                    reason: err.message
+                }, { isStateChange: false });
                 throw err;
             } finally {
                 entry.isLocked = false;
@@ -262,6 +267,14 @@ export const whotGameLoop = {
                 nextState.turnStartTime = Date.now();
                 nextState.stateVersion = (state.stateVersion || 0) + 1;
                 nextState.eventId = randomUUID();
+
+                // BUG FIX: End game if max timeouts exceeded
+                const timeoutLimit = nextState.rankType === 'warrior' ? 3 : 5;
+                if (nextState.timeoutCount[playerId] >= timeoutLimit) {
+                    await whotGameLoop.handleForfeit(gameId, playerId);
+                    // Critical: Resolve the lock and exit, don't broadcast the auto-play move
+                    return;
+                }
 
                 const actionTypeTimeout = nextState.discardPile.length > state.discardPile.length ? 'CARD_PLAYED' : 'PICK_CARD';
                 const playedCardTimeout = actionTypeTimeout === 'CARD_PLAYED' ? nextState.discardPile[nextState.discardPile.length - 1] : null;
