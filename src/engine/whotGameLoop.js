@@ -17,19 +17,19 @@ const RANK_THRESHOLDS = {
 
 const TIME_LIMITS = {
     CASUAL: { // Below 1750
-        TOTAL: 25000, // 25s
-        WARNING: 10000, // At 10s elapsed (15s left) - Yellow
-        DANGER: 20000,  // At 20s elapsed (5s left) - Red
+        TOTAL: 30000,   // 30s
+        WARNING: null,  // No yellow state
+        DANGER: 25000,  // At 25s elapsed (5s left) - Red
     },
     COMPETITIVE: { // Warrior+ (1750+)
-        TOTAL: 19000, // 19s
-        WARNING: 7000, // At 7s elapsed (12s left) - Yellow
-        DANGER: 14000,  // At 14s elapsed (5s left) - Red
+        TOTAL: 30000,   // 30s (same — user-specified)
+        WARNING: null,  // No yellow state
+        DANGER: 25000,  // At 25s elapsed (5s left) - Red
     }
 };
 
 const MAX_TIMEOUTS = {
-    CASUAL: 5,
+    CASUAL: 4,
     COMPETITIVE: 3
 };
 
@@ -150,10 +150,10 @@ export const whotGameLoop = {
                 nextState.stateVersion = (state.stateVersion || 0) + 1;
                 nextState.eventId = randomUUID(); // ID for state update broadcast
 
-                // ATOMIC TIMER RESET
+                // ATOMIC TIMER RESET — 30s, red at last 5s, no yellow
                 nextState.turnStartTime = Date.now();
-                nextState.warningYellowAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 7000 : 10000);
-                nextState.warningRedAt = nextState.turnStartTime + (nextState.rankType === 'warrior' ? 14000 : 20000);
+                nextState.warningYellowAt = null; // No yellow state
+                nextState.warningRedAt = nextState.turnStartTime + TIME_LIMITS.CASUAL.DANGER; // 25s elapsed = 5s left
 
                 // Determine action type and played card for broadcasts
                 let actionType = 'UNKNOWN';
