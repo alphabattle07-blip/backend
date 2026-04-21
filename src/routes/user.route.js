@@ -259,6 +259,47 @@ router.put('/game-stats/:gameId', authenticateToken, requireAuth, updateGameStat
 
 /**
  * @swagger
+ * /api/auth/game-stats/all:
+ *   get:
+ *     summary: Get all game statistics for a user with fallback to defaults
+ *     tags: [Game Statistics]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All game statistics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 allGameStats:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/GameStats'
+ *                 totalGames:
+ *                   type: integer
+ *                   description: Total number of games
+ *                 gamesWithStats:
+ *                   type: integer
+ *                   description: Number of games with existing statistics
+ *       401:
+ *         description: Authentication required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.get('/game-stats/all', authenticateToken, requireAuth, getAllGameStats);
+
+/**
+ * @swagger
  * /api/auth/game-stats/{gameId}:
  *   get:
  *     summary: Get game statistics for a specific game
@@ -303,45 +344,6 @@ router.put('/game-stats/:gameId', authenticateToken, requireAuth, updateGameStat
  */
 router.get('/game-stats/:gameId', authenticateToken, requireAuth, getGameStats);
 
-/**
- * @swagger
- * /api/auth/game-stats/all:
- *   get:
- *     summary: Get all game statistics for a user with fallback to defaults
- *     tags: [Game Statistics]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: All game statistics retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 allGameStats:
- *                   type: array
- *                   items:
- *                     $ref: '#/components/schemas/GameStats'
- *                 totalGames:
- *                   type: integer
- *                   description: Total number of games
- *                 gamesWithStats:
- *                   type: integer
- *                   description: Number of games with existing statistics
- *       401:
- *         description: Authentication required
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- *       500:
- *         description: Internal server error
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.get('/game-stats/all', authenticateToken, requireAuth, getAllGameStats);
+
 
 export default router;
