@@ -264,7 +264,18 @@ export const whotGameLoop = {
                 if (state.turnPlayer !== playerId || state.status === 'COMPLETED') return;
 
                 const nextState = whotGameEngine.handleTurnTimeout(state);
-                nextState.turnStartTime = Date.now();
+                const now = Date.now();
+                nextState.turnStartTime = now;
+                // Recalculate warning thresholds so the client timer ring resets to green
+                const duration = nextState.turnDuration || state.turnDuration || 30000;
+                const yellowPct = state.warningYellowAt && state.turnStartTime
+                    ? (state.warningYellowAt - state.turnStartTime) / (state.turnDuration || 30000)
+                    : 0.5;
+                const redPct = state.warningRedAt && state.turnStartTime
+                    ? (state.warningRedAt - state.turnStartTime) / (state.turnDuration || 30000)
+                    : 0.8;
+                nextState.warningYellowAt = now + duration * yellowPct;
+                nextState.warningRedAt = now + duration * redPct;
                 nextState.stateVersion = (state.stateVersion || 0) + 1;
                 nextState.eventId = randomUUID();
 
