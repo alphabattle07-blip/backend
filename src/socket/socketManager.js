@@ -136,7 +136,7 @@ export const initializeSocket = (socketIo) => {
                     const logicalId = game.player1Id === userId ? 'p1' : 'p2';
                     await ludoGameLoop.handleForfeit(gameId, logicalId);
                 } else if (game.gameType === 'whot') {
-                    await whotGameLoop.handleForfeit(gameId, userId);
+                    await whotGameLoop.handleForfeit(gameId, userId, 'VOLUNTARY');
                 }
             } catch (err) {
                 console.error(`[Socket] Forfeit Error: ${err.message}`);

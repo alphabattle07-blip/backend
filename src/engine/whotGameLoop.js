@@ -326,9 +326,9 @@ export const whotGameLoop = {
                 if (nextState.status === 'COMPLETED') {
                     await whotGameLoop.handleWin(gameId, nextState.winnerId, nextState);
                 } else {
-                    const maxTimeouts = state.rankType === 'warrior' ? 3 : 5;
+                    const maxTimeouts = state.rankType === 'warrior' ? 3 : 4;
                     if (nextState.timeoutCount[playerId] >= maxTimeouts) {
-                        await whotGameLoop.handleForfeit(gameId, playerId);
+                        await whotGameLoop.handleForfeit(gameId, playerId, 'TIMEOUT');
                     } else {
                         whotGameLoop.startTurnTimer(gameId, nextState.turnPlayer);
                     }
@@ -371,7 +371,7 @@ export const whotGameLoop = {
         await redis.del(`match:${gameId}`);
     },
 
-    handleForfeit: async (gameId, losingPlayerId) => {
+    handleForfeit: async (gameId, losingPlayerId, reasonCode = 'TIMEOUT') => {
         const entry = activeWhotGames.get(gameId);
         const state = entry ? entry.state : null;
         let winnerId = state ? state.players.find(id => id !== losingPlayerId) : null;
@@ -393,7 +393,8 @@ export const whotGameLoop = {
         await broadcastGameEvent(gameId, 'GAME_FORFEIT', {
             winnerId,
             loserId: losingPlayerId,
-            message: "Opponent timed out too many times."
+            reasonCode: reasonCode,
+            message: reasonCode === 'TIMEOUT' ? "Opponent timed out too many times." : "Player forfeited the match."
         }, { isStateChange: false });
 
         chatRepository.persistMatchChat(gameId);
