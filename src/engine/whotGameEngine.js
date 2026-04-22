@@ -113,7 +113,7 @@ export const whotGameEngine = {
         }
 
         const rankType = config.gameRankType === 'warrior' ? 'warrior' : 'casual';
-        const turnDuration = rankType === 'warrior' ? 19000 : 25000;
+        const turnDuration = 15000; // Updated to 15s per player request
         const turnStartTime = Date.now();
 
         return {
@@ -485,7 +485,7 @@ export const whotGameEngine = {
             playerHand: matchState.playerHands[playerId] || [],
             opponentHandCount: {},
             turnStartTime: matchState.turnStartTime || matchState.timerStart,
-            turnDuration: matchState.turnDuration || (matchState.gameRankType === 'warrior' ? 19000 : 25000),
+            turnDuration: matchState.turnDuration || 15000,
             warningYellowAt: matchState.warningYellowAt || 0,
             warningRedAt: matchState.warningRedAt || 0,
             timeoutCount: matchState.timeoutCount || {},
@@ -560,7 +560,7 @@ export const whotGameEngine = {
             winner: matchState.winnerId ? { id: matchState.winnerId } : null,
             status: matchState.status,
             turnStartTime: matchState.turnStartTime || matchState.timerStart,
-            turnDuration: matchState.turnDuration || (matchState.gameRankType === 'warrior' ? 19000 : 25000),
+            turnDuration: matchState.turnDuration || 15000,
             warningYellowAt: matchState.warningYellowAt || 0,
             warningRedAt: matchState.warningRedAt || 0,
             timeoutCount: matchState.timeoutCount || {},
