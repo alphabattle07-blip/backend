@@ -159,6 +159,7 @@ export const whotGameLoop = {
                 let actionType = 'UNKNOWN';
                 if (move.type === 'PLAY_CARD') actionType = 'CARD_PLAYED';
                 else if (move.type === 'DRAW') actionType = 'PICK_CARD';
+                else if (move.type === 'CALL_SUIT') actionType = 'CALL_SUIT';
 
                 const playedCard = move.type === 'PLAY_CARD'
                     ? nextState.discardPile[nextState.discardPile.length - 1]
@@ -169,7 +170,7 @@ export const whotGameLoop = {
                     playerId,
                     cardId: move.cardId,
                     card: playedCard,
-                    suitChoice: move.calledSuit
+                    suitChoice: move.calledSuit || move.suit
                 };
 
                 entry.state = nextState;
@@ -190,7 +191,7 @@ export const whotGameLoop = {
                     type: actionType,
                     cardId: move.cardId,
                     card: playedCard,
-                    suitChoice: move.calledSuit
+                    suitChoice: move.calledSuit || move.suit
                 }, { isStateChange: false });
 
                 // 3. Sync Scrubbed State

@@ -137,7 +137,8 @@ export const whotGameEngine = {
             calledSuit: null,
             status: 'IN_PROGRESS',
             lastMoveId: 0,
-            processedMoves: []
+            processedMoves: [],
+            pendingSuitSelection: null
         };
     },
 
@@ -157,6 +158,19 @@ export const whotGameEngine = {
         const ruleVersion = matchState.ruleVersion || "rule1";
         const hand = matchState.playerHands[playerId];
         const topCard = matchState.discardPile[matchState.discardPile.length - 1];
+
+        // ── CALL_SUIT ──
+        if (move.type === 'CALL_SUIT') {
+            if (matchState.pendingSuitSelection && matchState.pendingSuitSelection.playerId === playerId) {
+                return { valid: true };
+            }
+            return { valid: false, reason: "Not waiting for suit selection" };
+        }
+
+        // If pending suit selection, no other moves allowed
+        if (matchState.pendingSuitSelection && matchState.pendingSuitSelection.playerId === playerId) {
+            return { valid: false, reason: "Must call a suit first" };
+        }
 
         // ── DRAW ──
         if (move.type === 'DRAW') {
@@ -258,6 +272,24 @@ export const whotGameEngine = {
             newState.lastMoveId = move.moveId;
             newState.processedMoves.push(move.moveId);
             if (newState.processedMoves.length > 20) newState.processedMoves.shift();
+        }
+
+        // ────────────────────────────────────────
+        // CALL_SUIT
+        // ────────────────────────────────────────
+        if (move.type === 'CALL_SUIT') {
+            newState.calledSuit = move.suit || 'circle';
+            newState.pendingSuitSelection = null;
+            
+            // Check for winner if the Whot card was the last card
+            if (hand.length === 0) {
+                newState.status = 'COMPLETED';
+                newState.winnerId = playerId;
+                return newState;
+            }
+
+            newState.turnPlayer = opponentId;
+            return newState;
         }
 
         // ────────────────────────────────────────
@@ -389,8 +421,13 @@ export const whotGameEngine = {
                     }
 
                     case SPECIAL_NUMBERS.WHOT: // 20
-                        newState.calledSuit = move.calledSuit || 'circle';
-                        nextTurnPlayer = opponentId;
+                        if (move.calledSuit) {
+                            newState.calledSuit = move.calledSuit;
+                            nextTurnPlayer = opponentId;
+                        } else {
+                            newState.pendingSuitSelection = { playerId };
+                            nextTurnPlayer = playerId; // Turn doesn't pass yet
+                        }
                         break;
 
                     default:
@@ -493,6 +530,7 @@ export const whotGameEngine = {
             timerStart: matchState.timerStart,
             pendingPenalty: matchState.pendingPenalty,
             continuationState: matchState.continuationState,
+            pendingSuitSelection: matchState.pendingSuitSelection,
             calledSuit: matchState.calledSuit,
             status: matchState.status,
             winnerId: matchState.winnerId,
@@ -526,12 +564,21 @@ export const whotGameEngine = {
         const pendingPick = matchState.pendingPenalty?.type === 'draw' ? matchState.pendingPenalty.count : 0;
         // Map server's 'draw' penalty type to client's 'defend' action type
         // Client rules.ts checks for type === 'defend' to allow defense plays
-        const pendingAction = matchState.pendingPenalty ? {
-            type: 'defend', // Client expects 'defend', not 'draw'
-            count: matchState.pendingPenalty.count,
-            cardNumber: matchState.pendingPenalty.cardNumber || null,
-            playerIndex: matchState.pendingPenalty.targetId === playerId ? 0 : 1
-        } : null;
+        let pendingAction = null;
+        if (matchState.pendingPenalty) {
+            pendingAction = {
+                type: 'defend', // Client expects 'defend', not 'draw'
+                count: matchState.pendingPenalty.count,
+                cardNumber: matchState.pendingPenalty.cardNumber || null,
+                playerIndex: matchState.pendingPenalty.targetId === playerId ? 0 : 1
+            };
+        } else if (matchState.pendingSuitSelection) {
+            pendingAction = {
+                type: 'call_suit',
+                playerIndex: matchState.pendingSuitSelection.playerId === playerId ? 0 : 1,
+                nextAction: 'pass'
+            };
+        }
 
         // Map continuation state to client-friendly format
         const continuationAction = matchState.continuationState ? {
@@ -591,6 +638,16 @@ export const whotGameEngine = {
         // 2. If there's a pending penalty targeting this player, auto-draw
         if (matchState.pendingPenalty && matchState.pendingPenalty.targetId === turnPlayer) {
             return whotGameEngine.applyMove(matchState, turnPlayer, { type: 'DRAW' });
+        }
+
+        // 2.5. If pending suit selection, auto-select a suit
+        if (matchState.pendingSuitSelection && matchState.pendingSuitSelection.playerId === turnPlayer) {
+            const suits = {};
+            hand.forEach(c => { if (c.suit !== 'whot') suits[c.suit] = (suits[c.suit] || 0) + 1; });
+            const bestSuit = Object.keys(suits).length > 0 
+                ? Object.keys(suits).reduce((a, b) => suits[a] > suits[b] ? a : b) 
+                : 'circle';
+            return whotGameEngine.applyMove(matchState, turnPlayer, { type: 'CALL_SUIT', suit: bestSuit });
         }
 
         // 3. Continuation: if in continuation, try to play a valid card or draw to end
