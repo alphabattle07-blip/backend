@@ -16,14 +16,18 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
+  id          String   @id @default(cuid())
+  email       String?  @unique
+  password    String?
   name        String?
   avatar      String?
-  battleBonus Int     @default(0)
-  levelReward Int     @default(0)
-  rating      Int     @default(1000)
+  accountType String   @default("guest")   // "guest" | "registered"
+  guestId     String?  @unique             // e.g. "guest_9f3xK2"
+  deviceId    String?                      // Device fingerprint for abuse prevention
+  provider    String?                      // "email" | "google" | "apple" (null for guests)
+  battleBonus Int      @default(0)
+  levelReward Int      @default(0)
+  rating      Int      @default(1000)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

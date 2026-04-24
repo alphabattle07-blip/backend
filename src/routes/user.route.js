@@ -1,5 +1,5 @@
 import express from 'express';
-import { register, login, getProfile, updateProfile, updateGameStats, getGameStats, getAllGameStats } from '../controllers/user.controller.js';
+import { register, login, guestLogin, upgradeAccount, getProfile, updateProfile, updateGameStats, getGameStats, getAllGameStats } from '../controllers/user.controller.js';
 import { authenticateToken, requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -83,6 +83,26 @@ router.post('/register', register);
  *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.post('/login', login);
+
+/**
+ * @swagger
+ * /api/auth/guest:
+ *   post:
+ *     summary: Guest login (auto-create)
+ *     tags: [Authentication]
+ */
+router.post('/guest', guestLogin);
+
+/**
+ * @swagger
+ * /api/auth/upgrade:
+ *   post:
+ *     summary: Upgrade guest account to registered
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.post('/upgrade', authenticateToken, requireAuth, upgradeAccount);
 
 /**
  * @swagger

@@ -34,6 +34,16 @@ const initializeUserGameStats = async (userId) => {
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const SALT_ROUNDS = 12;
+const MAX_GUESTS_PER_DEVICE = 3; // Anti-abuse: max guest accounts per device per 30 days
+
+// Shared JWT generator — 30 days for all users (registered refresh silently)
+const generateToken = (user) => {
+  return jwt.sign(
+    { userId: user.id, name: user.name || 'Player', accountType: user.accountType || 'registered' },
+    JWT_SECRET,
+    { expiresIn: '30d' }
+  );
+};
 
 export const register = async (req, res) => {
   try {
@@ -66,6 +76,8 @@ export const register = async (req, res) => {
         email,
         password: hashedPassword,
         name,
+        accountType: 'registered',
+        provider: 'email',
         battleBonus: 1000, // Initial welcome bonus matching Welcome UI
         rating: 1000      // Starting global rating
       },
@@ -73,6 +85,7 @@ export const register = async (req, res) => {
         id: true,
         email: true,
         name: true,
+        accountType: true,
         createdAt: true
       }
     });
@@ -80,12 +93,7 @@ export const register = async (req, res) => {
     // Initialize game statistics for new user
     await initializeUserGameStats(user.id);
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id, name: user.name },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const token = generateToken(user);
 
     res.status(201).json({
       message: 'User created successfully',
@@ -123,12 +131,7 @@ export const login = async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id, name: user.name },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const token = generateToken(user);
 
     // Return user data without password
     const { password: _, ...userWithoutPassword } = user;
@@ -144,6 +147,166 @@ export const login = async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+// ═══════════════════════════════════════════════════
+// GUEST LOGIN — Silent auto-create, no UI friction
+// ═══════════════════════════════════════════════════
+export const guestLogin = async (req, res) => {
+  try {
+    const { guestId, deviceId } = req.body;
+
+    if (!guestId) {
+      return res.status(400).json({ error: 'guestId is required' });
+    }
+
+    // 1. Check if this guest already exists → return existing session
+    const existingGuest = await prisma.user.findUnique({
+      where: { guestId },
+      select: {
+        id: true, email: true, name: true, avatar: true,
+        accountType: true, guestId: true, rating: true,
+        battleBonus: true, levelReward: true, createdAt: true,
+        gameStats: { select: { gameId: true, wins: true, losses: true, draws: true, rating: true } }
+      }
+    });
+
+    if (existingGuest) {
+      const token = generateToken(existingGuest);
+      return res.json({ message: 'Guest session restored', user: existingGuest, token });
+    }
+
+    // 2. Anti-abuse: Check device guest limit (3 per device per 30 days)
+    if (deviceId && deviceId !== 'unknown') {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const recentGuestsFromDevice = await prisma.user.count({
+        where: {
+          deviceId,
+          accountType: 'guest',
+          createdAt: { gte: thirtyDaysAgo }
+        }
+      });
+
+      if (recentGuestsFromDevice >= MAX_GUESTS_PER_DEVICE) {
+        return res.status(429).json({
+          error: 'Too many guest accounts from this device. Please sign in.'
+        });
+      }
+    }
+
+    // 3. Generate display name: Guest + random 3-digit
+    const displayName = `Guest${Math.floor(100 + Math.random() * 900)}`;
+
+    // 4. Create guest user
+    const user = await prisma.user.create({
+      data: {
+        guestId,
+        deviceId: deviceId || null,
+        name: displayName,
+        accountType: 'guest',
+        battleBonus: 500, // Smaller welcome bonus for guests
+        rating: 1000
+      },
+      select: {
+        id: true, email: true, name: true, avatar: true,
+        accountType: true, guestId: true, rating: true,
+        battleBonus: true, levelReward: true, createdAt: true
+      }
+    });
+
+    // 5. Initialize game stats
+    await initializeUserGameStats(user.id);
+
+    const token = generateToken(user);
+
+    res.status(201).json({
+      message: 'Guest account created',
+      user,
+      token
+    });
+
+  } catch (error) {
+    console.error('Guest login error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// ═══════════════════════════════════════════════════
+// UPGRADE ACCOUNT — Merge guest → registered (preserves all progress)
+// ═══════════════════════════════════════════════════
+export const upgradeAccount = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { email, password, name, provider } = req.body;
+
+    // 1. Find the current user
+    const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!currentUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // 2. Must be a guest to upgrade
+    if (currentUser.accountType !== 'guest') {
+      return res.status(400).json({ error: 'Account is already registered' });
+    }
+
+    // 3. Validate: email required for upgrade
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required for account upgrade' });
+    }
+
+    // 4. Check email isn't already taken by another user
+    const emailConflict = await prisma.user.findUnique({ where: { email } });
+    if (emailConflict && emailConflict.id !== userId) {
+      return res.status(409).json({ error: 'An account with this email already exists' });
+    }
+
+    // 5. Build update data (atomic merge)
+    const updateData = {
+      email,
+      accountType: 'registered',
+      provider: provider || 'email',
+      // guestId is preserved for audit trail, not cleared
+    };
+
+    if (password) {
+      if (password.length < 6) {
+        return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      }
+      updateData.password = await bcrypt.hash(password, SALT_ROUNDS);
+    }
+
+    if (name) {
+      updateData.name = name.trim();
+    }
+
+    // 6. Perform the upgrade (rating, coins, match history all preserved automatically)
+    const upgradedUser = await prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true, email: true, name: true, avatar: true,
+        accountType: true, rating: true, battleBonus: true,
+        levelReward: true, createdAt: true, updatedAt: true,
+        gameStats: { select: { gameId: true, wins: true, losses: true, draws: true, rating: true } }
+      }
+    });
+
+    // 7. Issue fresh token with registered accountType
+    const token = generateToken(upgradedUser);
+
+    console.log(`[Auth] Guest ${currentUser.guestId} upgraded to registered: ${email}`);
+
+    res.json({
+      message: 'Account upgraded successfully! Your rank and rewards are preserved.',
+      user: upgradedUser,
+      token
+    });
+
+  } catch (error) {
+    console.error('Upgrade account error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 export const getProfile = async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -153,6 +316,8 @@ export const getProfile = async (req, res) => {
         email: true,
         name: true,
         avatar: true,
+        accountType: true,
+        guestId: true,
         battleBonus: true,
         levelReward: true,
         rating: true,
