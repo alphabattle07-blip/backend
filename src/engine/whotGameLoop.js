@@ -39,13 +39,22 @@ export const whotGameLoop = {
      */
     initializeMatch: async (gameId, player1, player2, config) => {
         const state = whotGameEngine.initializeGame(gameId, player1, player2, config);
+        
+        state.status = 'WAITING_FOR_PLAYERS';
+        state.turnStartTime = null;
+        state.timerStart = null;
+        state.warningYellowAt = null;
+        state.warningRedAt = null;
 
         const gameEntry = {
             state,
             timers: {},
             lock: Promise.resolve(),
             isLocked: false,
-            timeoutId: null
+            timeoutId: null,
+            readyStatus: { [player1.id]: false, [player2.id]: false },
+            isStarted: false,
+            startTimeoutId: setTimeout(() => whotGameLoop.cancelMatchIfUnready(gameId), 15000)
         };
 
         activeWhotGames.set(gameId, gameEntry);
@@ -80,7 +89,9 @@ export const whotGameLoop = {
                     timers: {},
                     lock: Promise.resolve(),
                     isLocked: false,
-                    timeoutId: null
+                    timeoutId: null,
+                    readyStatus: {},
+                    isStarted: parsed.status === 'IN_PROGRESS'
                 };
                 activeWhotGames.set(gameId, entry);
             }
@@ -95,10 +106,15 @@ export const whotGameLoop = {
         const state = await whotGameLoop.getMatchState(gameId);
         if (!state) return null;
 
-        const remaining = Math.max(0, state.turnDuration - (Date.now() - state.turnStartTime));
+        let remaining = 0;
+        if (state.status === 'IN_PROGRESS' && state.turnStartTime) {
+            remaining = Math.max(0, state.turnDuration - (Date.now() - state.turnStartTime));
+        } else if (state.status === 'WAITING_FOR_PLAYERS') {
+            remaining = state.turnDuration; // Return full duration if waiting
+        }
 
         // If a player reconnects late, trigger timeout logic
-        if (remaining === 0 && state.status !== 'COMPLETED') {
+        if (remaining === 0 && state.status === 'IN_PROGRESS') {
             await whotGameLoop.handleTurnTimeout(gameId, state.turnPlayer);
             const updatedState = await whotGameLoop.getMatchState(gameId);
             const scrubbed = whotGameEngine.scrubStateForClient(updatedState, playerId);
@@ -115,6 +131,73 @@ export const whotGameLoop = {
             remainingTime: remaining,
             serverTime: Date.now()
         };
+    },
+
+    setPlayerReady: async (gameId, playerId) => {
+        const entry = activeWhotGames.get(gameId);
+        if (!entry || entry.isStarted) return;
+
+        entry.readyStatus[playerId] = true;
+
+        const allReady = Object.values(entry.readyStatus).every(v => v);
+        if (allReady) {
+            if (entry.startTimeoutId) clearTimeout(entry.startTimeoutId);
+            entry.isStarted = true;
+            
+            const state = entry.state;
+            state.status = 'IN_PROGRESS';
+            
+            // Start game buffer: 2 seconds delay
+            const bufferMs = 2000;
+            const startTime = Date.now() + bufferMs;
+            
+            state.turnStartTime = startTime;
+            state.timerStart = startTime;
+            state.warningYellowAt = state.rankType === 'warrior' ? startTime + 7000 : startTime + 10000;
+            state.warningRedAt = state.rankType === 'warrior' ? startTime + 14000 : startTime + 20000;
+
+            const minimalState = { ...state };
+            delete minimalState.processedMoves;
+            await redis.set(`match:${gameId}`, JSON.stringify(minimalState));
+
+            await broadcastScrubbedEvent(gameId, 'GAME_STATE_UPDATE', state);
+            
+            await broadcastGameEvent(gameId, 'GAME_START', {
+                startTime,
+                turnDuration: state.turnDuration
+            }, { isStateChange: false });
+
+            // Start backend timer with buffer
+            entry.timeoutId = setTimeout(() => {
+                whotGameLoop.handleTurnTimeout(gameId, state.turnPlayer);
+            }, state.turnDuration + bufferMs);
+        }
+    },
+
+    cancelMatchIfUnready: async (gameId) => {
+        const entry = activeWhotGames.get(gameId);
+        if (!entry || entry.isStarted) return;
+
+        console.log(`[WhotLoop] Match ${gameId} cancelled because players weren't ready in time`);
+        
+        entry.state.status = 'CANCELLED';
+        await redis.set(`match:${gameId}`, JSON.stringify(entry.state));
+        
+        await broadcastGameEvent(gameId, 'MATCH_CANCELLED', {
+            reason: 'Players did not connect in time'
+        }, { isStateChange: false });
+
+        // Update Prisma DB to mark game as cancelled
+        try {
+            await prisma.game.update({
+                where: { id: gameId },
+                data: { status: 'CANCELLED' }
+            });
+        } catch(e) {
+            console.error(`[WhotLoop] Failed to cancel game in DB: ${e.message}`);
+        }
+
+        activeWhotGames.delete(gameId);
     },
 
     /**

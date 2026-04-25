@@ -141,7 +141,7 @@ export const startMatchmaking = async (req, res) => {
                         player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
                     }
                 });
-                whotGameLoop.startTurnTimer(game.id, matchState.turnPlayer);
+                // Timer will start after both players emit 'player_ready'
 
             } else {
                 // Ludo: Warrior+ tier (both players ≥1750) gets level 3 rules (2 dice, no safe tiles, capture boost)
@@ -336,7 +336,7 @@ export const checkMatchmakingStatus = async (req, res) => {
                         player2: { select: { id: true, name: true, avatar: true, rating: true, gameStats: true } }
                     }
                 });
-                whotGameLoop.startTurnTimer(game.id, matchState.turnPlayer);
+                // Timer will start after both players emit 'player_ready'
 
             } else {
                 // Ludo: Use tier from the queue entry to determine level

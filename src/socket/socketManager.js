@@ -57,6 +57,14 @@ export const initializeSocket = (socketIo) => {
             socket.leave(gameId);
         });
 
+        socket.on('player_ready', async ({ matchId }) => {
+            const userId = socketUser.get(socket.id);
+            if (userId && matchId) {
+                console.log(`[Socket] Player ${userId} is ready for match ${matchId}`);
+                await whotGameLoop.setPlayerReady(matchId, userId);
+            }
+        });
+
         socket.on('recoverLudoGame', async (gameId) => {
             const userId = socketUser.get(socket.id);
             if (userId && gameId) {
