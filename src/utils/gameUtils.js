@@ -116,42 +116,42 @@ export const processMatchRewards = async (winnerId, loserId, gameId, gameType) =
             prisma.user.update({
                 where: { id: winnerId },
                 data: {
-                    battleBonus: { increment: 75 },
-                    rating: { increment: 75 }
+                    battleBonus: { increment: 40 },
+                    rating: { increment: 40 }
                 }
             }),
             prisma.gameStats.upsert({
                 where: { userId_gameId: { userId: winnerId, gameId: gameType } },
                 update: {
                     wins: { increment: 1 },
-                    rating: { increment: 75 }
+                    rating: { increment: 40 }
                 },
                 create: {
                     userId: winnerId,
                     gameId: gameType,
                     wins: 1,
-                    rating: 1075
+                    rating: 1040
                 }
             }),
             // Loser Updates
             prisma.user.update({
                 where: { id: loserId },
                 data: {
-                    battleBonus: { increment: -25 },
-                    rating: { increment: -25 }
+                    battleBonus: { increment: -50 },
+                    rating: { increment: -50 }
                 }
             }),
             prisma.gameStats.upsert({
                 where: { userId_gameId: { userId: loserId, gameId: gameType } },
                 update: {
                     losses: { increment: 1 },
-                    rating: { increment: -25 }
+                    rating: { increment: -50 }
                 },
                 create: {
                     userId: loserId,
                     gameId: gameType,
                     losses: 1,
-                    rating: 975
+                    rating: 950
                 }
             })
         ]);
