@@ -1268,6 +1268,10 @@ export namespace Prisma {
     password: string | null
     name: string | null
     avatar: string | null
+    accountType: string | null
+    guestId: string | null
+    deviceId: string | null
+    provider: string | null
     battleBonus: number | null
     levelReward: number | null
     rating: number | null
@@ -1281,6 +1285,10 @@ export namespace Prisma {
     password: string | null
     name: string | null
     avatar: string | null
+    accountType: string | null
+    guestId: string | null
+    deviceId: string | null
+    provider: string | null
     battleBonus: number | null
     levelReward: number | null
     rating: number | null
@@ -1294,6 +1302,10 @@ export namespace Prisma {
     password: number
     name: number
     avatar: number
+    accountType: number
+    guestId: number
+    deviceId: number
+    provider: number
     battleBonus: number
     levelReward: number
     rating: number
@@ -1321,6 +1333,10 @@ export namespace Prisma {
     password?: true
     name?: true
     avatar?: true
+    accountType?: true
+    guestId?: true
+    deviceId?: true
+    provider?: true
     battleBonus?: true
     levelReward?: true
     rating?: true
@@ -1334,6 +1350,10 @@ export namespace Prisma {
     password?: true
     name?: true
     avatar?: true
+    accountType?: true
+    guestId?: true
+    deviceId?: true
+    provider?: true
     battleBonus?: true
     levelReward?: true
     rating?: true
@@ -1347,6 +1367,10 @@ export namespace Prisma {
     password?: true
     name?: true
     avatar?: true
+    accountType?: true
+    guestId?: true
+    deviceId?: true
+    provider?: true
     battleBonus?: true
     levelReward?: true
     rating?: true
@@ -1443,10 +1467,14 @@ export namespace Prisma {
 
   export type UserGroupByOutputType = {
     id: string
-    email: string
-    password: string
+    email: string | null
+    password: string | null
     name: string | null
     avatar: string | null
+    accountType: string
+    guestId: string | null
+    deviceId: string | null
+    provider: string | null
     battleBonus: number
     levelReward: number
     rating: number
@@ -1479,6 +1507,10 @@ export namespace Prisma {
     password?: boolean
     name?: boolean
     avatar?: boolean
+    accountType?: boolean
+    guestId?: boolean
+    deviceId?: boolean
+    provider?: boolean
     battleBonus?: boolean
     levelReward?: boolean
     rating?: boolean
@@ -1497,6 +1529,10 @@ export namespace Prisma {
     password?: boolean
     name?: boolean
     avatar?: boolean
+    accountType?: boolean
+    guestId?: boolean
+    deviceId?: boolean
+    provider?: boolean
     battleBonus?: boolean
     levelReward?: boolean
     rating?: boolean
@@ -1510,6 +1546,10 @@ export namespace Prisma {
     password?: boolean
     name?: boolean
     avatar?: boolean
+    accountType?: boolean
+    guestId?: boolean
+    deviceId?: boolean
+    provider?: boolean
     battleBonus?: boolean
     levelReward?: boolean
     rating?: boolean
@@ -1523,6 +1563,10 @@ export namespace Prisma {
     password?: boolean
     name?: boolean
     avatar?: boolean
+    accountType?: boolean
+    guestId?: boolean
+    deviceId?: boolean
+    provider?: boolean
     battleBonus?: boolean
     levelReward?: boolean
     rating?: boolean
@@ -1530,7 +1574,7 @@ export namespace Prisma {
     updatedAt?: boolean
   }
 
-  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "email" | "password" | "name" | "avatar" | "battleBonus" | "levelReward" | "rating" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
+  export type UserOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "email" | "password" | "name" | "avatar" | "accountType" | "guestId" | "deviceId" | "provider" | "battleBonus" | "levelReward" | "rating" | "createdAt" | "updatedAt", ExtArgs["result"]["user"]>
   export type UserInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     gameStats?: boolean | User$gameStatsArgs<ExtArgs>
     gamesAsPlayer1?: boolean | User$gamesAsPlayer1Args<ExtArgs>
@@ -1551,10 +1595,14 @@ export namespace Prisma {
     }
     scalars: $Extensions.GetPayloadResult<{
       id: string
-      email: string
-      password: string
+      email: string | null
+      password: string | null
       name: string | null
       avatar: string | null
+      accountType: string
+      guestId: string | null
+      deviceId: string | null
+      provider: string | null
       battleBonus: number
       levelReward: number
       rating: number
@@ -1992,6 +2040,10 @@ export namespace Prisma {
     readonly password: FieldRef<"User", 'String'>
     readonly name: FieldRef<"User", 'String'>
     readonly avatar: FieldRef<"User", 'String'>
+    readonly accountType: FieldRef<"User", 'String'>
+    readonly guestId: FieldRef<"User", 'String'>
+    readonly deviceId: FieldRef<"User", 'String'>
+    readonly provider: FieldRef<"User", 'String'>
     readonly battleBonus: FieldRef<"User", 'Int'>
     readonly levelReward: FieldRef<"User", 'Int'>
     readonly rating: FieldRef<"User", 'Int'>
@@ -5943,6 +5995,10 @@ export namespace Prisma {
     password: 'password',
     name: 'name',
     avatar: 'avatar',
+    accountType: 'accountType',
+    guestId: 'guestId',
+    deviceId: 'deviceId',
+    provider: 'provider',
     battleBonus: 'battleBonus',
     levelReward: 'levelReward',
     rating: 'rating',
@@ -6142,10 +6198,14 @@ export namespace Prisma {
     OR?: UserWhereInput[]
     NOT?: UserWhereInput | UserWhereInput[]
     id?: StringFilter<"User"> | string
-    email?: StringFilter<"User"> | string
-    password?: StringFilter<"User"> | string
+    email?: StringNullableFilter<"User"> | string | null
+    password?: StringNullableFilter<"User"> | string | null
     name?: StringNullableFilter<"User"> | string | null
     avatar?: StringNullableFilter<"User"> | string | null
+    accountType?: StringFilter<"User"> | string
+    guestId?: StringNullableFilter<"User"> | string | null
+    deviceId?: StringNullableFilter<"User"> | string | null
+    provider?: StringNullableFilter<"User"> | string | null
     battleBonus?: IntFilter<"User"> | number
     levelReward?: IntFilter<"User"> | number
     rating?: IntFilter<"User"> | number
@@ -6159,10 +6219,14 @@ export namespace Prisma {
 
   export type UserOrderByWithRelationInput = {
     id?: SortOrder
-    email?: SortOrder
-    password?: SortOrder
+    email?: SortOrderInput | SortOrder
+    password?: SortOrderInput | SortOrder
     name?: SortOrderInput | SortOrder
     avatar?: SortOrderInput | SortOrder
+    accountType?: SortOrder
+    guestId?: SortOrderInput | SortOrder
+    deviceId?: SortOrderInput | SortOrder
+    provider?: SortOrderInput | SortOrder
     battleBonus?: SortOrder
     levelReward?: SortOrder
     rating?: SortOrder
@@ -6177,12 +6241,16 @@ export namespace Prisma {
   export type UserWhereUniqueInput = Prisma.AtLeast<{
     id?: string
     email?: string
+    guestId?: string
     AND?: UserWhereInput | UserWhereInput[]
     OR?: UserWhereInput[]
     NOT?: UserWhereInput | UserWhereInput[]
-    password?: StringFilter<"User"> | string
+    password?: StringNullableFilter<"User"> | string | null
     name?: StringNullableFilter<"User"> | string | null
     avatar?: StringNullableFilter<"User"> | string | null
+    accountType?: StringFilter<"User"> | string
+    deviceId?: StringNullableFilter<"User"> | string | null
+    provider?: StringNullableFilter<"User"> | string | null
     battleBonus?: IntFilter<"User"> | number
     levelReward?: IntFilter<"User"> | number
     rating?: IntFilter<"User"> | number
@@ -6192,14 +6260,18 @@ export namespace Prisma {
     gamesAsPlayer1?: GameListRelationFilter
     gamesAsPlayer2?: GameListRelationFilter
     gameSessions?: GameSessionListRelationFilter
-  }, "id" | "email">
+  }, "id" | "email" | "guestId">
 
   export type UserOrderByWithAggregationInput = {
     id?: SortOrder
-    email?: SortOrder
-    password?: SortOrder
+    email?: SortOrderInput | SortOrder
+    password?: SortOrderInput | SortOrder
     name?: SortOrderInput | SortOrder
     avatar?: SortOrderInput | SortOrder
+    accountType?: SortOrder
+    guestId?: SortOrderInput | SortOrder
+    deviceId?: SortOrderInput | SortOrder
+    provider?: SortOrderInput | SortOrder
     battleBonus?: SortOrder
     levelReward?: SortOrder
     rating?: SortOrder
@@ -6217,10 +6289,14 @@ export namespace Prisma {
     OR?: UserScalarWhereWithAggregatesInput[]
     NOT?: UserScalarWhereWithAggregatesInput | UserScalarWhereWithAggregatesInput[]
     id?: StringWithAggregatesFilter<"User"> | string
-    email?: StringWithAggregatesFilter<"User"> | string
-    password?: StringWithAggregatesFilter<"User"> | string
+    email?: StringNullableWithAggregatesFilter<"User"> | string | null
+    password?: StringNullableWithAggregatesFilter<"User"> | string | null
     name?: StringNullableWithAggregatesFilter<"User"> | string | null
     avatar?: StringNullableWithAggregatesFilter<"User"> | string | null
+    accountType?: StringWithAggregatesFilter<"User"> | string
+    guestId?: StringNullableWithAggregatesFilter<"User"> | string | null
+    deviceId?: StringNullableWithAggregatesFilter<"User"> | string | null
+    provider?: StringNullableWithAggregatesFilter<"User"> | string | null
     battleBonus?: IntWithAggregatesFilter<"User"> | number
     levelReward?: IntWithAggregatesFilter<"User"> | number
     rating?: IntWithAggregatesFilter<"User"> | number
@@ -6463,10 +6539,14 @@ export namespace Prisma {
 
   export type UserCreateInput = {
     id?: string
-    email: string
-    password: string
+    email?: string | null
+    password?: string | null
     name?: string | null
     avatar?: string | null
+    accountType?: string
+    guestId?: string | null
+    deviceId?: string | null
+    provider?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -6480,10 +6560,14 @@ export namespace Prisma {
 
   export type UserUncheckedCreateInput = {
     id?: string
-    email: string
-    password: string
+    email?: string | null
+    password?: string | null
     name?: string | null
     avatar?: string | null
+    accountType?: string
+    guestId?: string | null
+    deviceId?: string | null
+    provider?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -6497,10 +6581,14 @@ export namespace Prisma {
 
   export type UserUpdateInput = {
     id?: StringFieldUpdateOperationsInput | string
-    email?: StringFieldUpdateOperationsInput | string
-    password?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    password?: NullableStringFieldUpdateOperationsInput | string | null
     name?: NullableStringFieldUpdateOperationsInput | string | null
     avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    accountType?: StringFieldUpdateOperationsInput | string
+    guestId?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceId?: NullableStringFieldUpdateOperationsInput | string | null
+    provider?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -6514,10 +6602,14 @@ export namespace Prisma {
 
   export type UserUncheckedUpdateInput = {
     id?: StringFieldUpdateOperationsInput | string
-    email?: StringFieldUpdateOperationsInput | string
-    password?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    password?: NullableStringFieldUpdateOperationsInput | string | null
     name?: NullableStringFieldUpdateOperationsInput | string | null
     avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    accountType?: StringFieldUpdateOperationsInput | string
+    guestId?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceId?: NullableStringFieldUpdateOperationsInput | string | null
+    provider?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -6531,10 +6623,14 @@ export namespace Prisma {
 
   export type UserCreateManyInput = {
     id?: string
-    email: string
-    password: string
+    email?: string | null
+    password?: string | null
     name?: string | null
     avatar?: string | null
+    accountType?: string
+    guestId?: string | null
+    deviceId?: string | null
+    provider?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -6544,10 +6640,14 @@ export namespace Prisma {
 
   export type UserUpdateManyMutationInput = {
     id?: StringFieldUpdateOperationsInput | string
-    email?: StringFieldUpdateOperationsInput | string
-    password?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    password?: NullableStringFieldUpdateOperationsInput | string | null
     name?: NullableStringFieldUpdateOperationsInput | string | null
     avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    accountType?: StringFieldUpdateOperationsInput | string
+    guestId?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceId?: NullableStringFieldUpdateOperationsInput | string | null
+    provider?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -6557,10 +6657,14 @@ export namespace Prisma {
 
   export type UserUncheckedUpdateManyInput = {
     id?: StringFieldUpdateOperationsInput | string
-    email?: StringFieldUpdateOperationsInput | string
-    password?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    password?: NullableStringFieldUpdateOperationsInput | string | null
     name?: NullableStringFieldUpdateOperationsInput | string | null
     avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    accountType?: StringFieldUpdateOperationsInput | string
+    guestId?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceId?: NullableStringFieldUpdateOperationsInput | string | null
+    provider?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -6905,6 +7009,10 @@ export namespace Prisma {
     password?: SortOrder
     name?: SortOrder
     avatar?: SortOrder
+    accountType?: SortOrder
+    guestId?: SortOrder
+    deviceId?: SortOrder
+    provider?: SortOrder
     battleBonus?: SortOrder
     levelReward?: SortOrder
     rating?: SortOrder
@@ -6924,6 +7032,10 @@ export namespace Prisma {
     password?: SortOrder
     name?: SortOrder
     avatar?: SortOrder
+    accountType?: SortOrder
+    guestId?: SortOrder
+    deviceId?: SortOrder
+    provider?: SortOrder
     battleBonus?: SortOrder
     levelReward?: SortOrder
     rating?: SortOrder
@@ -6937,6 +7049,10 @@ export namespace Prisma {
     password?: SortOrder
     name?: SortOrder
     avatar?: SortOrder
+    accountType?: SortOrder
+    guestId?: SortOrder
+    deviceId?: SortOrder
+    provider?: SortOrder
     battleBonus?: SortOrder
     levelReward?: SortOrder
     rating?: SortOrder
@@ -8036,10 +8152,14 @@ export namespace Prisma {
 
   export type UserCreateWithoutGameStatsInput = {
     id?: string
-    email: string
-    password: string
+    email?: string | null
+    password?: string | null
     name?: string | null
     avatar?: string | null
+    accountType?: string
+    guestId?: string | null
+    deviceId?: string | null
+    provider?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8052,10 +8172,14 @@ export namespace Prisma {
 
   export type UserUncheckedCreateWithoutGameStatsInput = {
     id?: string
-    email: string
-    password: string
+    email?: string | null
+    password?: string | null
     name?: string | null
     avatar?: string | null
+    accountType?: string
+    guestId?: string | null
+    deviceId?: string | null
+    provider?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8084,10 +8208,14 @@ export namespace Prisma {
 
   export type UserUpdateWithoutGameStatsInput = {
     id?: StringFieldUpdateOperationsInput | string
-    email?: StringFieldUpdateOperationsInput | string
-    password?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    password?: NullableStringFieldUpdateOperationsInput | string | null
     name?: NullableStringFieldUpdateOperationsInput | string | null
     avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    accountType?: StringFieldUpdateOperationsInput | string
+    guestId?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceId?: NullableStringFieldUpdateOperationsInput | string | null
+    provider?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8100,10 +8228,14 @@ export namespace Prisma {
 
   export type UserUncheckedUpdateWithoutGameStatsInput = {
     id?: StringFieldUpdateOperationsInput | string
-    email?: StringFieldUpdateOperationsInput | string
-    password?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    password?: NullableStringFieldUpdateOperationsInput | string | null
     name?: NullableStringFieldUpdateOperationsInput | string | null
     avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    accountType?: StringFieldUpdateOperationsInput | string
+    guestId?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceId?: NullableStringFieldUpdateOperationsInput | string | null
+    provider?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8116,10 +8248,14 @@ export namespace Prisma {
 
   export type UserCreateWithoutGamesAsPlayer1Input = {
     id?: string
-    email: string
-    password: string
+    email?: string | null
+    password?: string | null
     name?: string | null
     avatar?: string | null
+    accountType?: string
+    guestId?: string | null
+    deviceId?: string | null
+    provider?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8132,10 +8268,14 @@ export namespace Prisma {
 
   export type UserUncheckedCreateWithoutGamesAsPlayer1Input = {
     id?: string
-    email: string
-    password: string
+    email?: string | null
+    password?: string | null
     name?: string | null
     avatar?: string | null
+    accountType?: string
+    guestId?: string | null
+    deviceId?: string | null
+    provider?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8153,10 +8293,14 @@ export namespace Prisma {
 
   export type UserCreateWithoutGamesAsPlayer2Input = {
     id?: string
-    email: string
-    password: string
+    email?: string | null
+    password?: string | null
     name?: string | null
     avatar?: string | null
+    accountType?: string
+    guestId?: string | null
+    deviceId?: string | null
+    provider?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8169,10 +8313,14 @@ export namespace Prisma {
 
   export type UserUncheckedCreateWithoutGamesAsPlayer2Input = {
     id?: string
-    email: string
-    password: string
+    email?: string | null
+    password?: string | null
     name?: string | null
     avatar?: string | null
+    accountType?: string
+    guestId?: string | null
+    deviceId?: string | null
+    provider?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8225,10 +8373,14 @@ export namespace Prisma {
 
   export type UserUpdateWithoutGamesAsPlayer1Input = {
     id?: StringFieldUpdateOperationsInput | string
-    email?: StringFieldUpdateOperationsInput | string
-    password?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    password?: NullableStringFieldUpdateOperationsInput | string | null
     name?: NullableStringFieldUpdateOperationsInput | string | null
     avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    accountType?: StringFieldUpdateOperationsInput | string
+    guestId?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceId?: NullableStringFieldUpdateOperationsInput | string | null
+    provider?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8241,10 +8393,14 @@ export namespace Prisma {
 
   export type UserUncheckedUpdateWithoutGamesAsPlayer1Input = {
     id?: StringFieldUpdateOperationsInput | string
-    email?: StringFieldUpdateOperationsInput | string
-    password?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    password?: NullableStringFieldUpdateOperationsInput | string | null
     name?: NullableStringFieldUpdateOperationsInput | string | null
     avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    accountType?: StringFieldUpdateOperationsInput | string
+    guestId?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceId?: NullableStringFieldUpdateOperationsInput | string | null
+    provider?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8268,10 +8424,14 @@ export namespace Prisma {
 
   export type UserUpdateWithoutGamesAsPlayer2Input = {
     id?: StringFieldUpdateOperationsInput | string
-    email?: StringFieldUpdateOperationsInput | string
-    password?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    password?: NullableStringFieldUpdateOperationsInput | string | null
     name?: NullableStringFieldUpdateOperationsInput | string | null
     avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    accountType?: StringFieldUpdateOperationsInput | string
+    guestId?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceId?: NullableStringFieldUpdateOperationsInput | string | null
+    provider?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8284,10 +8444,14 @@ export namespace Prisma {
 
   export type UserUncheckedUpdateWithoutGamesAsPlayer2Input = {
     id?: StringFieldUpdateOperationsInput | string
-    email?: StringFieldUpdateOperationsInput | string
-    password?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    password?: NullableStringFieldUpdateOperationsInput | string | null
     name?: NullableStringFieldUpdateOperationsInput | string | null
     avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    accountType?: StringFieldUpdateOperationsInput | string
+    guestId?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceId?: NullableStringFieldUpdateOperationsInput | string | null
+    provider?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8351,10 +8515,14 @@ export namespace Prisma {
 
   export type UserCreateWithoutGameSessionsInput = {
     id?: string
-    email: string
-    password: string
+    email?: string | null
+    password?: string | null
     name?: string | null
     avatar?: string | null
+    accountType?: string
+    guestId?: string | null
+    deviceId?: string | null
+    provider?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8367,10 +8535,14 @@ export namespace Prisma {
 
   export type UserUncheckedCreateWithoutGameSessionsInput = {
     id?: string
-    email: string
-    password: string
+    email?: string | null
+    password?: string | null
     name?: string | null
     avatar?: string | null
+    accountType?: string
+    guestId?: string | null
+    deviceId?: string | null
+    provider?: string | null
     battleBonus?: number
     levelReward?: number
     rating?: number
@@ -8440,10 +8612,14 @@ export namespace Prisma {
 
   export type UserUpdateWithoutGameSessionsInput = {
     id?: StringFieldUpdateOperationsInput | string
-    email?: StringFieldUpdateOperationsInput | string
-    password?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    password?: NullableStringFieldUpdateOperationsInput | string | null
     name?: NullableStringFieldUpdateOperationsInput | string | null
     avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    accountType?: StringFieldUpdateOperationsInput | string
+    guestId?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceId?: NullableStringFieldUpdateOperationsInput | string | null
+    provider?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
@@ -8456,10 +8632,14 @@ export namespace Prisma {
 
   export type UserUncheckedUpdateWithoutGameSessionsInput = {
     id?: StringFieldUpdateOperationsInput | string
-    email?: StringFieldUpdateOperationsInput | string
-    password?: StringFieldUpdateOperationsInput | string
+    email?: NullableStringFieldUpdateOperationsInput | string | null
+    password?: NullableStringFieldUpdateOperationsInput | string | null
     name?: NullableStringFieldUpdateOperationsInput | string | null
     avatar?: NullableStringFieldUpdateOperationsInput | string | null
+    accountType?: StringFieldUpdateOperationsInput | string
+    guestId?: NullableStringFieldUpdateOperationsInput | string | null
+    deviceId?: NullableStringFieldUpdateOperationsInput | string | null
+    provider?: NullableStringFieldUpdateOperationsInput | string | null
     battleBonus?: IntFieldUpdateOperationsInput | number
     levelReward?: IntFieldUpdateOperationsInput | number
     rating?: IntFieldUpdateOperationsInput | number
