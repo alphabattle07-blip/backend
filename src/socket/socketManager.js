@@ -239,3 +239,41 @@ export const broadcastScrubbedEvent = async (gameId, type, fullState, options = 
         }
     }
 };
+
+/**
+ * Broadcast to all sockets in the room EXCEPT sockets belonging to excludeUserId.
+ * Used for OPPONENT_MOVE to avoid sending the event back to the player who made the move.
+ */
+export const broadcastGameEventExcluding = async (gameId, type, payload, excludeUserId, options = {}) => {
+    if (!io) return;
+
+    let stateVersion = undefined;
+    let eventId = undefined;
+
+    if (payload && payload.stateVersion !== undefined) {
+        stateVersion = payload.stateVersion;
+    }
+    if (payload && payload.eventId !== undefined) {
+        eventId = payload.eventId;
+    }
+
+    const gameEvent = {
+        eventId: eventId !== undefined ? eventId : randomUUID(),
+        stateVersion: stateVersion !== undefined ? stateVersion : 0,
+        type,
+        payload,
+        serverTime: Date.now()
+    };
+
+    const room = io.sockets.adapter.rooms.get(gameId);
+    if (!room) return;
+
+    for (const socketId of room) {
+        const userId = socketUser.get(socketId);
+        if (userId && userId !== excludeUserId) {
+            io.to(socketId).emit('gameEvent', gameEvent);
+        }
+    }
+
+    return gameEvent;
+};

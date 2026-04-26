@@ -1,5 +1,5 @@
 import redis from '../utils/redis.js';
-import { broadcastGameEvent, broadcastScrubbedEvent } from '../socket/socketManager.js';
+import { broadcastGameEvent, broadcastScrubbedEvent, broadcastGameEventExcluding } from '../socket/socketManager.js';
 import { PrismaClient } from '../generated/prisma/index.js';
 import { whotGameEngine } from './whotGameEngine.js';
 import { processMatchRewards } from '../utils/gameUtils.js';
@@ -265,21 +265,21 @@ export const whotGameLoop = {
                 delete minimalState.processedMoves;
                 await redis.set(`match:${gameId}`, JSON.stringify(minimalState));
 
-                // 1. Success Broadcast (Unified)
+                // 1. Success Broadcast (Unified) — with proper eventId for dedup
                 await broadcastGameEvent(gameId, 'MOVE_CONFIRMED', { 
+                    eventId: randomUUID(),
                     moveId: move.moveId, 
                     playerId 
                 }, { isStateChange: false });
 
-                // 2. Opponent Move (Unified)
-                await broadcastGameEvent(gameId, 'OPPONENT_MOVE', {
+                // 2. Opponent Move — targeted to opponent only (skip sender socket)
+                await broadcastGameEventExcluding(gameId, 'OPPONENT_MOVE', {
                     eventId: randomUUID(),
-                    excludePlayerId: playerId,
                     type: actionType,
                     cardId: move.cardId,
                     card: playedCard,
                     suitChoice: move.calledSuit || move.suit
-                }, { isStateChange: false });
+                }, playerId);
 
                 // 3. Sync Scrubbed State
                 await broadcastScrubbedEvent(gameId, 'GAME_STATE_UPDATE', nextState);
@@ -400,19 +400,17 @@ export const whotGameLoop = {
 
                 if (newPileLen > oldPileLen) {
                     const playedCard = nextState.discardPile[newPileLen - 1];
-                    await broadcastGameEvent(gameId, 'OPPONENT_MOVE', {
+                    await broadcastGameEventExcluding(gameId, 'OPPONENT_MOVE', {
                         eventId: randomUUID(),
-                        excludePlayerId: playerId,
                         type: 'CARD_PLAYED',
                         cardId: playedCard.id,
                         suitChoice: playedCard.number === 20 ? 'circle' : undefined
-                    }, { isStateChange: false });
+                    }, playerId);
                 } else {
-                    await broadcastGameEvent(gameId, 'OPPONENT_MOVE', {
+                    await broadcastGameEventExcluding(gameId, 'OPPONENT_MOVE', {
                         eventId: randomUUID(),
-                        excludePlayerId: playerId,
                         type: 'PICK_CARD'
-                    }, { isStateChange: false });
+                    }, playerId);
                 }
 
                 // 3. Sync State
