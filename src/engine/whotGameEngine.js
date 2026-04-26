@@ -607,6 +607,7 @@ export const whotGameEngine = {
             winner: matchState.winnerId ? { id: matchState.winnerId } : null,
             status: matchState.status,
             turnStartTime: matchState.turnStartTime || matchState.timerStart,
+            turnEndTime: matchState.turnEndTime || null,
             turnDuration: matchState.turnDuration || 15000,
             warningYellowAt: matchState.warningYellowAt || 0,
             warningRedAt: matchState.warningRedAt || 0,
