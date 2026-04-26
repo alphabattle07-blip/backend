@@ -152,9 +152,10 @@ export const whotGameLoop = {
             const startTime = Date.now() + bufferMs;
             
             state.turnStartTime = startTime;
+            state.turnEndTime = startTime + state.turnDuration;
             state.timerStart = startTime;
-            state.warningYellowAt = state.rankType === 'warrior' ? startTime + 7000 : startTime + 10000;
-            state.warningRedAt = state.rankType === 'warrior' ? startTime + 14000 : startTime + 20000;
+            state.warningYellowAt = null;
+            state.warningRedAt = state.turnEndTime - 5000; // Red at 5s remaining
 
             const minimalState = { ...state };
             delete minimalState.processedMoves;
@@ -164,6 +165,8 @@ export const whotGameLoop = {
             
             await broadcastGameEvent(gameId, 'GAME_START', {
                 startTime,
+                turnEndTime: state.turnEndTime,
+                warningRedAt: state.warningRedAt,
                 turnDuration: state.turnDuration
             }, { isStateChange: false });
 
@@ -233,10 +236,11 @@ export const whotGameLoop = {
                 nextState.stateVersion = (state.stateVersion || 0) + 1;
                 nextState.eventId = randomUUID(); // ID for state update broadcast
 
-                // ATOMIC TIMER RESET — 30s, red at last 5s, no yellow
+                // ATOMIC TIMER RESET — absolute timestamps for perfect sync
                 nextState.turnStartTime = Date.now();
+                nextState.turnEndTime = nextState.turnStartTime + nextState.turnDuration;
                 nextState.warningYellowAt = null; // No yellow state
-                nextState.warningRedAt = nextState.turnStartTime + TIME_LIMITS.CASUAL.DANGER; // 25s elapsed = 5s left
+                nextState.warningRedAt = nextState.turnEndTime - 5000; // Red at 5s remaining
 
                 // Determine action type and played card for broadcasts
                 let actionType = 'UNKNOWN';
@@ -325,7 +329,9 @@ export const whotGameLoop = {
         await broadcastGameEvent(gameId, 'TURN_STARTED', {
             eventId: randomUUID(),
             whoseTurn: currentPlayerId,
-            timeLimit: entry.state.turnDuration
+            timeLimit: entry.state.turnDuration,
+            turnEndTime: entry.state.turnEndTime,
+            warningRedAt: entry.state.warningRedAt
         }, { isStateChange: false });
     },
 
@@ -349,17 +355,11 @@ export const whotGameLoop = {
 
                 const nextState = whotGameEngine.handleTurnTimeout(state);
                 const now = Date.now();
+                const duration = nextState.turnDuration || state.turnDuration || 30000;
                 nextState.turnStartTime = now;
-                // Recalculate warning thresholds so the client timer ring resets to green
-                const duration = nextState.turnDuration || state.turnDuration || 15000;
-                const yellowPct = state.warningYellowAt && state.turnStartTime
-                    ? (state.warningYellowAt - state.turnStartTime) / (state.turnDuration || 15000)
-                    : 0.5;
-                const redPct = state.warningRedAt && state.turnStartTime
-                    ? (state.warningRedAt - state.turnStartTime) / (state.turnDuration || 15000)
-                    : 0.8;
-                nextState.warningYellowAt = now + duration * yellowPct;
-                nextState.warningRedAt = now + duration * redPct;
+                nextState.turnEndTime = now + duration;
+                nextState.warningYellowAt = null;
+                nextState.warningRedAt = nextState.turnEndTime - 5000;
                 nextState.stateVersion = (state.stateVersion || 0) + 1;
                 nextState.eventId = randomUUID();
 
