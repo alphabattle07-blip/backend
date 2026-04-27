@@ -288,6 +288,9 @@ export const whotGameEngine = {
                 return newState;
             }
 
+            if (newState.market.length === 0 && newState.discardPile.length > 1) {
+                whotGameEngine.reshufflePile(newState);
+            }
             newState.turnPlayer = opponentId;
             return newState;
         }
@@ -316,6 +319,9 @@ export const whotGameEngine = {
                 newState.continuationState = null;
             }
 
+            if (newState.market.length === 0 && newState.discardPile.length > 1) {
+                whotGameEngine.reshufflePile(newState);
+            }
             newState.turnPlayer = opponentId;
             return newState;
         }
@@ -496,6 +502,10 @@ export const whotGameEngine = {
             // (prevents brief "zombie turn" state after win)
             if (newState.status !== 'COMPLETED') {
                 newState.turnPlayer = nextTurnPlayer;
+            }
+
+            if (newState.market.length === 0 && newState.discardPile.length > 1) {
+                whotGameEngine.reshufflePile(newState);
             }
             return newState;
         }
